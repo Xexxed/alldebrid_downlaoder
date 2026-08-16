@@ -1,5 +1,6 @@
 /**
- * AllDebrid Downloader Frontend Application
+ * AllDebrid Core — High Performance Computing (HPC) Frontend Application
+ * Implementation: design.md
  */
 
 // Application State
@@ -106,14 +107,37 @@ const elements = {
 };
 
 // ============================================================
-// Utilities
+// SVG Icon System (No Emojis per design.md)
+// ============================================================
+
+const ICONS = {
+  video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>`,
+  audio: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+  archive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
+  document: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+  image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+  folder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+  cloud: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>`,
+  link: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`,
+  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  pause: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`,
+  play: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
+  retry: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  drive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>`,
+};
+
+// ============================================================
+// Formatting Utilities
 // ============================================================
 
 function formatBytes(bytes, decimals = 2) {
-  if (!bytes || bytes === 0) return '0 B';
+  if (!bytes || bytes === 0) return '0.00 B';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
@@ -135,7 +159,7 @@ function formatEta(seconds) {
   return `${hours}h ${mins}m`;
 }
 
-function getFileIcon(filename) {
+function getFileIconSvg(filename) {
   const ext = (filename.split('.').pop() || '').toLowerCase();
   const videoExts = ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'ts'];
   const audioExts = ['mp3', 'flac', 'wav', 'aac', 'ogg', 'm4a'];
@@ -143,27 +167,27 @@ function getFileIcon(filename) {
   const docExts = ['pdf', 'epub', 'txt', 'nfo', 'doc', 'docx'];
   const imgExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
 
-  if (videoExts.includes(ext)) return '🎬';
-  if (audioExts.includes(ext)) return '🎵';
-  if (archiveExts.includes(ext)) return '📦';
-  if (docExts.includes(ext)) return '📄';
-  if (imgExts.includes(ext)) return '🖼️';
-  return '📄';
+  if (videoExts.includes(ext)) return ICONS.video;
+  if (audioExts.includes(ext)) return ICONS.audio;
+  if (archiveExts.includes(ext)) return ICONS.archive;
+  if (docExts.includes(ext)) return ICONS.document;
+  if (imgExts.includes(ext)) return ICONS.image;
+  return ICONS.document;
 }
 
 function showToast(message, type = 'info') {
   const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
-  toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+  toast.className = `hpc-toast ${type}`;
+  const iconSvg = type === 'success' ? ICONS.check : type === 'error' ? ICONS.alert : ICONS.info;
+  toast.innerHTML = `<div class="toast-icon">${iconSvg}</div><span class="mono">${message}</span>`;
   elements.toastContainer.appendChild(toast);
 
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(100%)';
-    toast.style.transition = 'all 0.3s ease';
-    setTimeout(() => toast.remove(), 300);
-  }, 4000);
+    toast.style.transition = 'all 0.25s ease-out';
+    setTimeout(() => toast.remove(), 260);
+  }, 4200);
 }
 
 // ============================================================
@@ -180,8 +204,8 @@ function connectWebSocket() {
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    elements.wsStatus.innerHTML = '<span class="status-dot"></span> Live';
-    elements.wsStatus.style.color = '#10b981';
+    elements.wsStatus.innerHTML = '<span class="pulse-dot"></span><span class="socket-text mono">SOCKET LIVE</span>';
+    elements.wsStatus.style.color = 'var(--accent-success)';
     if (reconnectTimer) clearTimeout(reconnectTimer);
   };
 
@@ -195,8 +219,8 @@ function connectWebSocket() {
   };
 
   ws.onclose = () => {
-    elements.wsStatus.innerHTML = '<span class="status-dot" style="background:#f43f5e;box-shadow:0 0 8px #f43f5e;"></span> Offline';
-    elements.wsStatus.style.color = '#f43f5e';
+    elements.wsStatus.innerHTML = '<span class="pulse-dot" style="background:var(--accent-primary);box-shadow:0 0 8px var(--accent-primary);"></span><span class="socket-text mono">OFFLINE</span>';
+    elements.wsStatus.style.color = 'var(--accent-primary)';
     reconnectTimer = setTimeout(connectWebSocket, 2500);
   };
 
@@ -222,7 +246,7 @@ function handleWsMessage(msg) {
     state.tasks.set(msg.task.id, msg.task);
     renderTasks();
     updateGlobalStats();
-    showToast(`Completed: ${msg.task.name}`, 'success');
+    showToast(`Task Complete: ${msg.task.name}`, 'success');
   } else if (msg.type === 'task_deleted') {
     state.tasks.delete(msg.taskId);
     renderTasks();
@@ -246,26 +270,23 @@ async function fetchStatus() {
     if (data.userInfo) {
       const u = data.userInfo;
       const isPrem = u.isPremium;
-      elements.userStatusIcon.textContent = isPrem ? '⭐' : '👤';
-      elements.userStatusLabel.textContent = isPrem ? 'Premium Account' : 'Free Account';
+      elements.userStatusLabel.textContent = isPrem ? 'PREMIUM NODE' : 'STANDARD NODE';
       elements.userStatusValue.textContent = `${u.username || 'User'}`;
-      elements.userPill.style.borderColor = isPrem ? 'rgba(16, 185, 129, 0.4)' : 'rgba(245, 158, 11, 0.4)';
+      elements.userPill.style.borderColor = isPrem ? 'rgba(0, 255, 102, 0.4)' : 'rgba(255, 176, 32, 0.4)';
     } else if (data.hasApiKey && data.userError) {
-      elements.userStatusIcon.textContent = '⚠️';
-      elements.userStatusLabel.textContent = 'AllDebrid Error';
-      elements.userStatusValue.textContent = 'Invalid Key';
-      elements.userPill.style.borderColor = 'rgba(244, 63, 94, 0.4)';
+      elements.userStatusLabel.textContent = 'NODE ERROR';
+      elements.userStatusValue.textContent = 'AUTH FAILED';
+      elements.userPill.style.borderColor = 'rgba(237, 28, 36, 0.4)';
     } else {
-      elements.userStatusIcon.textContent = '🔑';
-      elements.userStatusLabel.textContent = 'API Key';
-      elements.userStatusValue.textContent = 'Not Configured';
-      elements.userPill.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+      elements.userStatusLabel.textContent = 'API CREDENTIAL';
+      elements.userStatusValue.textContent = 'NOT CONFIGURED';
+      elements.userPill.style.borderColor = 'rgba(255, 176, 32, 0.4)';
     }
 
     // Populate settings form
     elements.downloadDirInput.value = data.downloadDir || '';
     elements.maxConcurrentRange.value = data.maxConcurrent || 3;
-    elements.maxConcurrentVal.textContent = data.maxConcurrent || 3;
+    elements.maxConcurrentVal.textContent = `${data.maxConcurrent || 3} WORKERS`;
   } catch (err) {
     console.error('Failed to fetch status:', err);
   }
@@ -273,9 +294,10 @@ async function fetchStatus() {
 
 async function fetchCloudMagnets() {
   elements.cloudTorrentsList.innerHTML = `
-    <div class="loading-spinner-container">
-      <div class="spinner"></div>
-      <p>Loading cloud magnets from AllDebrid...</p>
+    <div class="shimmer-card">
+      <div class="shimmer-line header"></div>
+      <div class="shimmer-line sub"></div>
+      <div class="shimmer-line bar"></div>
     </div>
   `;
 
@@ -289,10 +311,12 @@ async function fetchCloudMagnets() {
   } catch (err) {
     elements.cloudTorrentsList.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">⚠️</div>
-        <h3>Failed to Load Cloud Torrents</h3>
+        <div class="empty-icon-box" style="color:var(--accent-primary);">
+          ${ICONS.alert}
+        </div>
+        <h3>CLOUD SYNC FAILED</h3>
         <p>${err.message}</p>
-        <button class="btn btn-secondary" onclick="fetchCloudMagnets()">Try Again</button>
+        <button class="btn btn-secondary" onclick="fetchCloudMagnets()">RETRY QUERY</button>
       </div>
     `;
   }
@@ -315,8 +339,8 @@ function updateGlobalStats() {
 
   elements.activeCount.textContent = activeCount;
   elements.completedCount.textContent = completedCount;
-  elements.activeStatsText.textContent = `${activeCount} tasks in queue`;
-  elements.completedStatsText.textContent = `${completedCount} completed tasks`;
+  elements.activeStatsText.textContent = `${activeCount} TASKS IN PIPELINE`;
+  elements.completedStatsText.textContent = `${completedCount} COMPLETED JOBS`;
 }
 
 function renderTasks() {
@@ -355,79 +379,99 @@ function createTaskCardHtml(task) {
   const isError = task.status === 'error';
   const isWaitingCloud = task.status === 'waiting_cloud';
 
-  let statusText = task.status.replace(/_/g, ' ');
-  if (isWaitingCloud) statusText = `Cloud Processing (${task.cloudProgress || 0}%)`;
+  let statusText = task.status.toUpperCase().replace(/_/g, ' ');
+  if (isWaitingCloud) statusText = `CLOUD SYNC (${task.cloudProgress || 0}%)`;
 
-  let typeIcon = task.type === 'torrent' ? '📁' : '🔗';
+  const typeIcon = task.type === 'torrent' ? ICONS.folder : ICONS.link;
 
   return `
     <div class="task-card" data-task-id="${task.id}">
       <div class="task-header">
         <div class="task-title-area">
-          <div class="task-type-icon">${typeIcon}</div>
-          <div class="task-info-block">
+          <div class="task-type-badge">${typeIcon}</div>
+          <div>
             <div class="task-name" title="${task.name}">${task.name}</div>
-            <div class="task-meta">
-              <span class="task-folder-tag">📂 ${task.fileCount || 1} files preserved</span>
-              <span>${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}</span>
-              ${task.error ? `<span style="color:var(--accent-rose)">⚠️ ${task.error}</span>` : ''}
+            <div class="task-meta-pills" style="margin-top: 6px;">
+              <span class="telemetry-badge">${task.files?.length || 1} FILES PRESERVED</span>
+              <span class="telemetry-badge">${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}</span>
+              ${task.error ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)">${task.error}</span>` : ''}
             </div>
           </div>
         </div>
-        <div class="status-badge ${task.status}">
-          ${isDownloading ? '<span class="status-dot"></span>' : ''}
-          ${statusText}
+        <div class="status-pill ${task.status}">
+          [ ${statusText} ]
         </div>
       </div>
 
-      <div class="progress-container">
-        <div class="progress-track">
-          <div class="progress-fill ${isCompleted ? 'completed' : isError ? 'error' : isDownloading ? 'active-glow' : ''}" 
-               style="width: ${task.progress || 0}%"></div>
+      <div class="task-progress-box">
+        <div class="hpc-progress-track">
+          <div class="hpc-progress-fill ${isDownloading ? 'active-stream' : ''}" 
+               style="width: ${task.progress || 0}%;"></div>
+        </div>
+        <div class="task-metrics-row">
+          <div class="metric-group">
+            <div class="metric-item">
+              <span class="metric-label">PROGRESS:</span>
+              <span class="metric-val highlight">${task.progress || 0}%</span>
+            </div>
+            ${isDownloading ? `
+              <div class="metric-item">
+                <span class="metric-label">SPEED:</span>
+                <span class="metric-val highlight">${formatSpeed(task.speed)}</span>
+              </div>
+            ` : ''}
+            ${isDownloading && task.eta > 0 ? `
+              <div class="metric-item">
+                <span class="metric-label">ETA:</span>
+                <span class="metric-val">${formatEta(task.eta)}</span>
+              </div>
+            ` : ''}
+            ${isCompleted ? `
+              <div class="metric-item" style="color:var(--accent-success)">
+                ✓ ON-DISK VERIFIED
+              </div>
+            ` : ''}
+          </div>
         </div>
       </div>
 
-      <div class="task-footer">
-        <div class="task-metrics">
-          <div class="metric-item percent">${task.progress || 0}%</div>
-          ${isDownloading ? `<div class="metric-item speed">⚡ ${formatSpeed(task.speed)}</div>` : ''}
-          ${isDownloading && task.eta > 0 ? `<div class="metric-item">⏱️ ETA: ${formatEta(task.eta)}</div>` : ''}
-          ${isCompleted ? `<div class="metric-item" style="color:var(--accent-emerald)">✓ Saved to disk</div>` : ''}
-        </div>
-
-        <div class="task-actions">
-          <button class="btn btn-secondary btn-sm" onclick="openFileTreeModal('${task.id}')" title="Inspect files and preserved subfolders">
-            📁 Structure
+      <div class="task-actions">
+        <button class="btn btn-secondary btn-sm" onclick="openFileTreeModal('${task.id}')" title="Inspect file hierarchy">
+          <span class="btn-svg">${ICONS.folder}</span>
+          <span>STRUCTURE</span>
+        </button>
+        
+        ${isCompleted || task.downloadedSize > 0 ? `
+          <button class="btn btn-secondary btn-sm" onclick="openLocalFolder('${task.id}')" title="Open directory in File Explorer">
+            <span class="btn-svg">${ICONS.drive}</span>
+            <span>OPEN FOLDER</span>
           </button>
-          
-          ${isCompleted || task.downloadedSize > 0 ? `
-            <button class="btn btn-secondary btn-sm" onclick="openLocalFolder('${task.id}')" title="Open in File Explorer">
-              📂 Open Folder
-            </button>
-          ` : ''}
+        ` : ''}
 
-          ${isDownloading ? `
-            <button class="btn btn-secondary btn-sm" onclick="pauseTask('${task.id}')" title="Pause Download">
-              ⏸️ Pause
-            </button>
-          ` : ''}
-
-          ${isPaused ? `
-            <button class="btn btn-secondary btn-sm" onclick="resumeTask('${task.id}')" title="Resume Download">
-              ▶️ Resume
-            </button>
-          ` : ''}
-
-          ${isError ? `
-            <button class="btn btn-secondary btn-sm" onclick="retryTask('${task.id}')" title="Retry Download">
-              🔄 Retry
-            </button>
-          ` : ''}
-
-          <button class="btn btn-danger btn-sm" onclick="cancelTask('${task.id}')" title="Cancel & Remove">
-            🗑️
+        ${isDownloading ? `
+          <button class="btn btn-secondary btn-sm" onclick="pauseTask('${task.id}')" title="Pause Download">
+            <span class="btn-svg">${ICONS.pause}</span>
+            <span>PAUSE</span>
           </button>
-        </div>
+        ` : ''}
+
+        ${isPaused ? `
+          <button class="btn btn-secondary btn-sm" onclick="resumeTask('${task.id}')" title="Resume Download">
+            <span class="btn-svg">${ICONS.play}</span>
+            <span>RESUME</span>
+          </button>
+        ` : ''}
+
+        ${isError ? `
+          <button class="btn btn-secondary btn-sm" onclick="retryTask('${task.id}')" title="Retry Download">
+            <span class="btn-svg">${ICONS.retry}</span>
+            <span>RETRY</span>
+          </button>
+        ` : ''}
+
+        <button class="btn btn-danger btn-sm btn-icon" onclick="cancelTask('${task.id}')" title="Cancel & Delete">
+          ${ICONS.trash}
+        </button>
       </div>
     </div>
   `;
@@ -442,9 +486,9 @@ function renderCloudMagnets() {
   if (filtered.length === 0) {
     elements.cloudTorrentsList.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">☁️</div>
-        <h3>No Cloud Magnets Found</h3>
-        <p>Torrents uploaded or cached on your AllDebrid account will show up here.</p>
+        <div class="empty-icon-box">${ICONS.cloud}</div>
+        <h3>NO CLOUD STORAGE MAGNETS</h3>
+        <p>Torrents uploaded or cached on your AllDebrid account will display here.</p>
       </div>
     `;
     return;
@@ -454,31 +498,27 @@ function renderCloudMagnets() {
     .map((m) => {
       const isReady = m.statusCode === 4 || m.status === 'Ready';
       const isDownloading = m.statusCode === 1 || m.status === 'Downloading';
-      const isError = m.statusCode >= 5;
-
       const progress = m.size > 0 ? Math.round((m.downloaded / m.size) * 100) : isReady ? 100 : 0;
 
       return `
-        <div class="cloud-item-card">
-          <div class="cloud-item-info">
-            <div class="cloud-item-icon">${isReady ? '✅' : isDownloading ? '⚡' : '☁️'}</div>
-            <div class="cloud-item-details">
-              <div class="cloud-item-title" title="${m.filename || 'Torrent ' + m.id}">${m.filename || 'Torrent #' + m.id}</div>
-              <div class="cloud-item-meta">
-                <span>${formatBytes(m.size)}</span>
-                <span>•</span>
-                <span>${m.status || 'Active'} (${progress}%)</span>
-                ${m.seeders !== undefined ? `<span>• 👥 ${m.seeders} seeders</span>` : ''}
-                ${m.downloadSpeed > 0 ? `<span>• ⚡ ${formatSpeed(m.downloadSpeed)}</span>` : ''}
-              </div>
+        <div class="cloud-card">
+          <div class="cloud-info">
+            <div class="cloud-title mono" title="${m.filename || 'Torrent ' + m.id}">${m.filename || 'Torrent #' + m.id}</div>
+            <div class="cloud-meta">
+              <span>${formatBytes(m.size)}</span>
+              <span>•</span>
+              <span style="color:var(--accent-electric);">${m.status || 'Active'} (${progress}%)</span>
+              ${m.seeders !== undefined ? `<span>• ${m.seeders} SEEDS</span>` : ''}
+              ${m.downloadSpeed > 0 ? `<span>• ${formatSpeed(m.downloadSpeed)}</span>` : ''}
             </div>
           </div>
-          <div class="cloud-item-actions">
-            <button class="btn btn-primary btn-sm btn-glow" onclick="downloadCloudMagnet(${m.id})">
-              ⬇️ Download to Local Disk
+          <div class="cloud-actions">
+            <button class="btn btn-primary btn-sm" onclick="downloadCloudMagnet(${m.id})">
+              <span class="btn-svg">${ICONS.drive}</span>
+              <span>DOWNLOAD TO DISK</span>
             </button>
-            <button class="btn btn-danger btn-sm" onclick="deleteCloudMagnet(${m.id})" title="Delete from AllDebrid Cloud">
-              🗑️
+            <button class="btn btn-danger btn-sm btn-icon" onclick="deleteCloudMagnet(${m.id})" title="Delete from cloud">
+              ${ICONS.trash}
             </button>
           </div>
         </div>
@@ -496,7 +536,7 @@ window.openLocalFolder = async function (taskId) {
     const res = await fetch(`/api/downloads/${taskId}/open-folder`, { method: 'POST' });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    showToast('Opened folder in File Explorer', 'success');
+    showToast('Opened destination directory in File Explorer', 'success');
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -504,27 +544,27 @@ window.openLocalFolder = async function (taskId) {
 
 window.pauseTask = async function (taskId) {
   await fetch(`/api/downloads/${taskId}/pause`, { method: 'POST' });
-  showToast('Download paused', 'info');
+  showToast('Download stream paused', 'info');
 };
 
 window.resumeTask = async function (taskId) {
   await fetch(`/api/downloads/${taskId}/resume`, { method: 'POST' });
-  showToast('Download resumed', 'info');
+  showToast('Download stream resumed', 'info');
 };
 
 window.retryTask = async function (taskId) {
   await fetch(`/api/downloads/${taskId}/retry`, { method: 'POST' });
-  showToast('Retrying download...', 'info');
+  showToast('Retrying failed streams...', 'info');
 };
 
 window.cancelTask = async function (taskId) {
-  if (confirm('Cancel and remove this download?')) {
+  if (confirm('Cancel and delete this task from pipeline?')) {
     await fetch(`/api/downloads/${taskId}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ deleteFiles: false }),
     });
-    showToast('Download cancelled', 'info');
+    showToast('Task removed from pipeline', 'info');
   }
 };
 
@@ -534,7 +574,7 @@ window.downloadCloudMagnet = async function (magnetId) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    showToast('Added cloud torrent to local download queue!', 'success');
+    showToast('Queued cloud torrent into local download pipeline!', 'success');
     switchTab('active');
   } catch (err) {
     showToast(err.message, 'error');
@@ -548,7 +588,7 @@ window.deleteCloudMagnet = async function (magnetId) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      showToast('Deleted from cloud', 'success');
+      showToast('Deleted from AllDebrid cloud', 'success');
       fetchCloudMagnets();
     } catch (err) {
       showToast(err.message, 'error');
@@ -563,7 +603,12 @@ window.deleteCloudMagnet = async function (magnetId) {
 window.openFileTreeModal = async function (taskId) {
   state.currentTreeTaskId = taskId;
   elements.fileTreeModal.classList.add('active');
-  elements.treeContentArea.innerHTML = '<div class="spinner"></div>';
+  elements.treeContentArea.innerHTML = `
+    <div class="shimmer-card">
+      <div class="shimmer-line header"></div>
+      <div class="shimmer-line sub"></div>
+    </div>
+  `;
 
   try {
     const res = await fetch(`/api/downloads/${taskId}`);
@@ -571,12 +616,12 @@ window.openFileTreeModal = async function (taskId) {
     if (data.error) throw new Error(data.error);
 
     const task = data.task;
-    elements.treeModalTitle.textContent = `📁 ${task.name}`;
+    elements.treeModalTitle.textContent = `${task.name}`;
 
     if (!task.files || task.files.length === 0) {
       elements.treeContentArea.innerHTML = `
         <div class="empty-state" style="padding:20px;">
-          <p>File list is being generated from AllDebrid cloud...</p>
+          <p>Querying directory topology from AllDebrid...</p>
         </div>
       `;
       return;
@@ -586,17 +631,17 @@ window.openFileTreeModal = async function (taskId) {
       .map((f) => {
         const isDone = f.status === 'completed';
         const isError = f.status === 'error';
-        const icon = getFileIcon(f.name);
+        const iconSvg = getFileIconSvg(f.name);
         return `
-          <div class="tree-node">
-            <div class="tree-node-left">
-              <span class="tree-icon">${icon}</span>
-              <span class="tree-name" title="${f.relativePath}">${f.relativePath}</span>
+          <div class="tree-row">
+            <div class="tree-row-left">
+              <span class="tree-row-icon">${iconSvg}</span>
+              <span class="tree-path-text" title="${f.relativePath}">${f.relativePath}</span>
             </div>
-            <div class="tree-node-right">
+            <div class="tree-row-right">
               <span>${formatBytes(f.size)}</span>
-              <span class="status-badge ${f.status}" style="font-size:11px;padding:2px 8px;">
-                ${isDone ? '✓ Saved' : isError ? '❌ Error' : f.progress + '%'}
+              <span class="status-pill ${f.status}" style="font-size:10px;padding:2px 8px;">
+                ${isDone ? 'COMPLETE' : isError ? 'ERROR' : f.progress + '%'}
               </span>
             </div>
           </div>
@@ -604,7 +649,7 @@ window.openFileTreeModal = async function (taskId) {
       })
       .join('');
   } catch (err) {
-    elements.treeContentArea.innerHTML = `<p style="color:var(--accent-rose)">${err.message}</p>`;
+    elements.treeContentArea.innerHTML = `<p style="color:var(--accent-primary);">${err.message}</p>`;
   }
 };
 
@@ -649,7 +694,7 @@ document.querySelectorAll('.nav-tab').forEach((btn) => {
 document.querySelectorAll('.modal-tab').forEach((tabBtn) => {
   tabBtn.addEventListener('click', () => {
     document.querySelectorAll('.modal-tab').forEach((b) => b.classList.remove('active'));
-    document.querySelectorAll('.modal-tab-pane').forEach((p) => p.classList.remove('active'));
+    document.querySelectorAll('.modal-pane').forEach((p) => p.classList.remove('active'));
 
     tabBtn.classList.add('active');
     document.getElementById(`modal-tab-${tabBtn.dataset.modalTab}`).classList.add('active');
@@ -693,7 +738,12 @@ elements.closeFolderBrowserBtn.onclick = closeFolderBrowser;
 elements.cancelFolderBrowserBtn.onclick = closeFolderBrowser;
 
 async function loadDirectory(targetPath = '') {
-  elements.browserFoldersList.innerHTML = '<div class="spinner" style="margin:20px auto;"></div>';
+  elements.browserFoldersList.innerHTML = `
+    <div class="shimmer-card" style="padding:12px;">
+      <div class="shimmer-line" style="width:70%;"></div>
+      <div class="shimmer-line" style="width:50%;"></div>
+    </div>
+  `;
 
   try {
     const url = targetPath ? `/api/browse-directory?path=${encodeURIComponent(targetPath)}` : '/api/browse-directory';
@@ -717,7 +767,8 @@ async function loadDirectory(targetPath = '') {
           const isActive = data.currentPath.toLowerCase().startsWith(d.toLowerCase());
           return `
             <button type="button" class="drive-btn ${isActive ? 'active' : ''}" onclick="loadDirectory('${d.replace(/\\/g, '\\\\')}')">
-              💾 ${d}
+              <span class="btn-svg">${ICONS.drive}</span>
+              <span>${d}</span>
             </button>
           `;
         })
@@ -729,8 +780,8 @@ async function loadDirectory(targetPath = '') {
     // Render Folders List
     if (!data.directories || data.directories.length === 0) {
       elements.browserFoldersList.innerHTML = `
-        <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">
-          No subfolders in this directory
+        <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;" class="mono">
+          NO SUBDIRECTORIES
         </div>
       `;
     } else {
@@ -738,8 +789,8 @@ async function loadDirectory(targetPath = '') {
         .map(
           (d) => `
           <div class="folder-item" onclick="loadDirectory('${d.path.replace(/\\/g, '\\\\')}')">
-            <span class="folder-item-icon">📁</span>
-            <span class="folder-item-name" title="${d.name}">${d.name}</span>
+            ${ICONS.folder}
+            <span title="${d.name}">${d.name}</span>
           </div>
         `
         )
@@ -747,8 +798,8 @@ async function loadDirectory(targetPath = '') {
     }
   } catch (err) {
     elements.browserFoldersList.innerHTML = `
-      <div style="padding:16px;color:var(--accent-rose);font-size:13px;">
-        ⚠️ Error: ${err.message}
+      <div style="padding:16px;color:var(--accent-primary);font-size:13px;" class="mono">
+        DIRECTORY ERROR: ${err.message}
       </div>
     `;
   }
@@ -793,7 +844,7 @@ elements.selectFolderConfirmBtn.onclick = () => {
   }
 
   closeFolderBrowser();
-  showToast(`Selected directory: ${chosenPath}`, 'info');
+  showToast(`Selected destination: ${chosenPath}`, 'info');
 };
 
 elements.browseDownloadDirBtn.onclick = () => {
@@ -818,10 +869,10 @@ function openDownloadReview(previews) {
   elements.reviewTotalSize.textContent = formatBytes(primaryItem.totalSize);
 
   const fileCount = primaryItem.flattenedFiles?.length || 1;
-  elements.reviewFileCount.textContent = `${fileCount} files`;
+  elements.reviewFileCount.textContent = `${fileCount} FILES`;
 
-  elements.reviewStatusBadge.textContent = primaryItem.isReady ? 'Ready on Cloud' : 'Waiting for Cloud';
-  elements.reviewStatusBadge.style.color = primaryItem.isReady ? '#6ee7b7' : '#fcd34d';
+  elements.reviewStatusBadge.textContent = primaryItem.isReady ? 'CLOUD READY' : 'WAITING FOR CLOUD';
+  elements.reviewStatusBadge.style.color = primaryItem.isReady ? 'var(--accent-success)' : 'var(--accent-amber)';
 
   elements.reviewOutputDirInput.value = primaryItem.defaultOutputDir;
 
@@ -871,33 +922,33 @@ function renderReviewTree() {
 
   if (files.length === 0) {
     elements.reviewTreeContainer.innerHTML = `
-      <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">
-        Torrent is being fetched or contains 1 single stream. Folder structure will be created automatically once ready.
+      <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;" class="mono">
+        Single stream or cloud cache pending. Directory topology will create automatically upon ingestion.
       </div>
     `;
     return;
   }
 
   elements.reviewTreeContainer.innerHTML = files
-    .map((f, idx) => {
+    .map((f) => {
       const isChecked = state.reviewSelectedPaths.has(f.relativePath);
-      const icon = getFileIcon(f.name);
+      const iconSvg = getFileIconSvg(f.name);
       
       let diskBadge = '';
       if (f.isCompleteOnDisk) {
-        diskBadge = '<span class="status-badge completed" style="font-size:10px;padding:2px 6px;margin-right:8px;">✓ On Disk (Skipped)</span>';
+        diskBadge = '<span class="status-pill completed" style="font-size:9px;padding:2px 6px;">[ ON DISK - SKIP ]</span>';
       } else if (f.existsOnDisk && f.diskBytes > 0) {
-        diskBadge = `<span class="status-badge downloading" style="font-size:10px;padding:2px 6px;margin-right:8px;">⚡ Resume from ${formatBytes(f.diskBytes)}</span>`;
+        diskBadge = `<span class="status-pill downloading" style="font-size:9px;padding:2px 6px;">[ RESUME: ${formatBytes(f.diskBytes)} ]</span>`;
       }
 
       return `
-        <label class="review-file-row ${f.isCompleteOnDisk ? 'already-downloaded' : ''}">
-          <div class="review-file-left">
+        <label class="tree-row">
+          <div class="tree-row-left">
             <input type="checkbox" data-path="${f.relativePath}" ${isChecked ? 'checked' : ''} onchange="toggleReviewFile('${f.relativePath}')" />
-            <span class="tree-icon">${icon}</span>
-            <span class="review-path-text" title="${f.relativePath}">${f.relativePath}</span>
+            <span class="tree-row-icon">${iconSvg}</span>
+            <span class="tree-path-text" title="${f.relativePath}">${f.relativePath}</span>
           </div>
-          <div class="review-file-size" style="display:flex;align-items:center;">
+          <div class="tree-row-right">
             ${diskBadge}
             <span>${formatBytes(f.size)}</span>
           </div>
@@ -937,12 +988,12 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
   const selectedList = Array.from(state.reviewSelectedPaths);
 
   if (selectedList.length === 0 && state.reviewPreviews[0].flattenedFiles?.length > 0) {
-    showToast('Please select at least one file to download', 'error');
+    showToast('Select at least one file to download', 'error');
     return;
   }
 
   elements.confirmReviewDownloadBtn.disabled = true;
-  elements.confirmReviewDownloadBtn.textContent = 'Queueing...';
+  elements.confirmReviewDownloadBtn.textContent = 'DISPATCHING PIPELINE...';
 
   const itemsPayload = state.reviewPreviews.map((p) => ({
     type: p.type,
@@ -964,7 +1015,7 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    showToast(`Successfully verified & added ${data.addedCount} download(s)!`, 'success');
+    showToast(`Dispatched ${data.addedCount} task(s) into pipeline!`, 'success');
     closeDownloadReview();
     closeAddModal();
     switchTab('active');
@@ -972,7 +1023,12 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
     showToast(err.message, 'error');
   } finally {
     elements.confirmReviewDownloadBtn.disabled = false;
-    elements.confirmReviewDownloadBtn.textContent = '🚀 Confirm & Start Download';
+    elements.confirmReviewDownloadBtn.innerHTML = `
+      <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      <span>CONFIRM &amp; DISPATCH TASK</span>
+    `;
   }
 };
 
@@ -989,7 +1045,7 @@ elements.submitAddBtn.onclick = async () => {
   }
 
   elements.submitAddBtn.disabled = true;
-  elements.submitAddBtn.textContent = 'Inspecting Structure...';
+  elements.submitAddBtn.textContent = 'ANALYZING TOPOLOGY...';
 
   try {
     const res = await fetch('/api/downloads/preview', {
@@ -1001,7 +1057,7 @@ elements.submitAddBtn.onclick = async () => {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     if (!data.previews || data.previews.length === 0) {
-      throw new Error(data.errors?.[0] || 'No downloadable torrent structure found for input');
+      throw new Error(data.errors?.[0] || 'No downloadable torrent structure found');
     }
 
     elements.addDownloadModal.classList.remove('active');
@@ -1010,9 +1066,58 @@ elements.submitAddBtn.onclick = async () => {
     showToast(err.message, 'error');
   } finally {
     elements.submitAddBtn.disabled = false;
-    elements.submitAddBtn.textContent = 'Review & Start Download';
+    elements.submitAddBtn.textContent = 'INSPECT & REVIEW STRUCTURE';
   }
 };
+
+// Drag & Drop .torrent Upload
+elements.torrentDropzone.onclick = () => elements.torrentFileInput.click();
+
+elements.torrentDropzone.ondragover = (e) => {
+  e.preventDefault();
+  elements.torrentDropzone.classList.add('dragover');
+};
+
+elements.torrentDropzone.ondragleave = () => {
+  elements.torrentDropzone.classList.remove('dragover');
+};
+
+elements.torrentDropzone.ondrop = (e) => {
+  e.preventDefault();
+  elements.torrentDropzone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+};
+
+elements.torrentFileInput.onchange = (e) => {
+  handleFiles(e.target.files);
+};
+
+function handleFiles(fileList) {
+  const torrents = Array.from(fileList).filter((f) => f.name.endsWith('.torrent'));
+  if (torrents.length === 0) {
+    showToast('Only .torrent files are supported here', 'error');
+    return;
+  }
+
+  state.selectedTorrentFiles = torrents;
+  elements.selectedFilesList.innerHTML = torrents
+    .map(
+      (f) => `
+      <div class="tree-row" style="margin-top:4px;">
+        <div class="tree-row-left">
+          <span class="tree-row-icon">${ICONS.document}</span>
+          <span class="tree-path-text">${f.name}</span>
+        </div>
+        <div class="tree-row-right">
+          <span>${formatBytes(f.size)}</span>
+        </div>
+      </div>
+    `
+    )
+    .join('');
+
+  elements.submitUploadBtn.disabled = false;
+}
 
 // Submit Upload .torrent -> Trigger Preview
 elements.submitUploadBtn.onclick = async () => {
@@ -1024,7 +1129,7 @@ elements.submitUploadBtn.onclick = async () => {
   });
 
   elements.submitUploadBtn.disabled = true;
-  elements.submitUploadBtn.textContent = 'Inspecting Torrent...';
+  elements.submitUploadBtn.textContent = 'INSPECTING TORRENT...';
 
   try {
     const res = await fetch('/api/downloads/preview', {
@@ -1044,7 +1149,7 @@ elements.submitUploadBtn.onclick = async () => {
     showToast(err.message, 'error');
   } finally {
     elements.submitUploadBtn.disabled = false;
-    elements.submitUploadBtn.textContent = 'Review & Download';
+    elements.submitUploadBtn.textContent = 'INSPECT & DOWNLOAD';
   }
 };
 
@@ -1053,13 +1158,12 @@ elements.submitUploadBtn.onclick = async () => {
 // ============================================================
 
 elements.maxConcurrentRange.oninput = () => {
-  elements.maxConcurrentVal.textContent = elements.maxConcurrentRange.value;
+  elements.maxConcurrentVal.textContent = `${elements.maxConcurrentRange.value} WORKERS`;
 };
 
 elements.toggleApiKeyVisibility.onclick = () => {
   const isPw = elements.apiKeyInput.type === 'password';
   elements.apiKeyInput.type = isPw ? 'text' : 'password';
-  elements.toggleApiKeyVisibility.textContent = isPw ? '🔒' : '👁️';
 };
 
 elements.settingsForm.onsubmit = async (e) => {
@@ -1081,7 +1185,7 @@ elements.settingsForm.onsubmit = async (e) => {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    showToast('Settings saved successfully!', 'success');
+    showToast('Configuration persisted successfully!', 'success');
     fetchStatus();
   } catch (err) {
     showToast(err.message, 'error');
@@ -1090,7 +1194,7 @@ elements.settingsForm.onsubmit = async (e) => {
 
 elements.testApiBtn.onclick = async () => {
   elements.testApiBtn.disabled = true;
-  elements.testApiBtn.textContent = 'Testing...';
+  elements.testApiBtn.textContent = 'VERIFYING...';
 
   try {
     // If user entered a key in input, save it first
@@ -1106,7 +1210,7 @@ elements.testApiBtn.onclick = async () => {
     const data = await res.json();
 
     if (data.userInfo) {
-      showToast(`API Key Valid! Welcome ${data.userInfo.username} (Premium: ${data.userInfo.isPremium ? 'Active' : 'Expired'})`, 'success');
+      showToast(`Credentials Valid: Node active as ${data.userInfo.username} (Premium: ${data.userInfo.isPremium ? 'YES' : 'EXPIRED'})`, 'success');
     } else {
       showToast(`Verification Failed: ${data.userError || 'Invalid API Key'}`, 'error');
     }
@@ -1115,7 +1219,7 @@ elements.testApiBtn.onclick = async () => {
     showToast(err.message, 'error');
   } finally {
     elements.testApiBtn.disabled = false;
-    elements.testApiBtn.textContent = 'Verify API Key';
+    elements.testApiBtn.textContent = 'VERIFY CREDENTIALS';
   }
 };
 
