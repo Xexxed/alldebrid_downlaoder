@@ -189,10 +189,17 @@ export function sanitizePathSegment(segment) {
  * Recursively parses the AllDebrid files tree structure into a flat list of files with relative paths
  * @param {Array} entries - The tree returned by /v4/magnet/files
  * @param {string} currentPath - The parent path accumulated so far
+ * @param {boolean} isRoot - Whether this is the root call
  * @returns {Array<{ name: string, relativePath: string, size: number, link: string }>}
  */
-export function flattenFileTree(entries, currentPath = '') {
+export function flattenFileTree(entries, currentPath = '', isRoot = true) {
   if (!Array.isArray(entries)) return [];
+
+  // If at the very root level and there is exactly 1 top-level folder wrapper,
+  // unwrap it so relative paths are relative to the torrent root folder.
+  if (isRoot && entries.length === 1 && Array.isArray(entries[0].e)) {
+    return flattenFileTree(entries[0].e, '', false);
+  }
 
   const results = [];
 
@@ -203,7 +210,7 @@ export function flattenFileTree(entries, currentPath = '') {
     // If 'e' (entries) exists, it is a subfolder
     if (Array.isArray(item.e)) {
       const subPath = currentPath ? `${currentPath}/${name}` : name;
-      const nested = flattenFileTree(item.e, subPath);
+      const nested = flattenFileTree(item.e, subPath, false);
       results.push(...nested);
     } else if (item.l) {
       // It's a file

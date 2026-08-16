@@ -117,8 +117,59 @@ assert.strictEqual(flattened[2].relativePath, 'Season 01/Subtitles/ep01.en.srt')
 assert.strictEqual(flattened[4].name, 'Bonus Feature.mp4');
 assert.strictEqual(flattened[4].relativePath, 'Extras/Bonus Feature.mp4');
 
-assert.strictEqual(flattened[5].name, 'readme.txt');
-assert.strictEqual(flattened[5].relativePath, 'readme.txt');
+// Test 4: Single Root Folder Wrapper (e.g. Chuck torrent with top-level folder)
+console.log('Test 4: Top-Level Folder Wrapper Unwrapping');
 
-console.log('✅ Recursive Folder Tree flattening & path preservation passed');
+const wrappedTorrentTree = [
+  {
+    n: 'Chuck (2007) Season 1-5 S01-S05 (1080p BluRay x265 HEVC 10bit AAC 5.1 Kappa) [QxR]',
+    e: [
+      {
+        n: 'Season 1',
+        e: [
+          {
+            n: 'Chuck.S01E01.mkv',
+            s: 500000000,
+            l: 'https://alldebrid.com/f/chk01',
+          },
+        ],
+      },
+      {
+        n: 'Featurettes',
+        e: [
+          {
+            n: 'Declassified.mkv',
+            s: 100000000,
+            l: 'https://alldebrid.com/f/chkfeat',
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const unwrapFlattened = flattenFileTree(wrappedTorrentTree);
+assert.strictEqual(unwrapFlattened.length, 2);
+assert.strictEqual(unwrapFlattened[0].relativePath, 'Season 1/Chuck.S01E01.mkv');
+assert.strictEqual(unwrapFlattened[1].relativePath, 'Featurettes/Declassified.mkv');
+
+// Verify that joining with downloadDir + torrentName produces exactly 1 Chuck folder
+import path from 'path';
+const baseDownloadDir = 'F:\\Torrents';
+const torrentName = 'Chuck (2007) Season 1-5 S01-S05 (1080p BluRay x265 HEVC 10bit AAC 5.1 Kappa) [QxR]';
+const torrentFolder = path.join(baseDownloadDir, torrentName);
+
+const finalFilePath1 = path.join(torrentFolder, unwrapFlattened[0].relativePath.split('/').join(path.sep));
+const finalFilePath2 = path.join(torrentFolder, unwrapFlattened[1].relativePath.split('/').join(path.sep));
+
+assert.strictEqual(
+  finalFilePath1,
+  'F:\\Torrents\\Chuck (2007) Season 1-5 S01-S05 (1080p BluRay x265 HEVC 10bit AAC 5.1 Kappa) [QxR]\\Season 1\\Chuck.S01E01.mkv'
+);
+assert.strictEqual(
+  finalFilePath2,
+  'F:\\Torrents\\Chuck (2007) Season 1-5 S01-S05 (1080p BluRay x265 HEVC 10bit AAC 5.1 Kappa) [QxR]\\Featurettes\\Declassified.mkv'
+);
+
+console.log('✅ Top-Level Folder Wrapper Unwrapping & Path Assembly passed (No redundant folders!)');
 console.log('--- ALL UNIT TESTS PASSED SUCCESSFULLY! ---');

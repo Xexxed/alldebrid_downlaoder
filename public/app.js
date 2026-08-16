@@ -825,9 +825,18 @@ function openDownloadReview(previews) {
 
   elements.reviewOutputDirInput.value = primaryItem.defaultOutputDir;
 
-  // Initialize selected files (all checked by default)
+  // Initialize selected files (skip already complete files by default if desired or include uncompleted)
   if (primaryItem.flattenedFiles) {
-    primaryItem.flattenedFiles.forEach((f) => state.reviewSelectedPaths.add(f.relativePath));
+    primaryItem.flattenedFiles.forEach((f) => {
+      // If not fully completed, select by default
+      if (!f.isCompleteOnDisk) {
+        state.reviewSelectedPaths.add(f.relativePath);
+      }
+    });
+    // If all files were complete, select all so user has full control
+    if (state.reviewSelectedPaths.size === 0) {
+      primaryItem.flattenedFiles.forEach((f) => state.reviewSelectedPaths.add(f.relativePath));
+    }
   }
 
   renderReviewTree();
@@ -873,14 +882,25 @@ function renderReviewTree() {
     .map((f, idx) => {
       const isChecked = state.reviewSelectedPaths.has(f.relativePath);
       const icon = getFileIcon(f.name);
+      
+      let diskBadge = '';
+      if (f.isCompleteOnDisk) {
+        diskBadge = '<span class="status-badge completed" style="font-size:10px;padding:2px 6px;margin-right:8px;">✓ On Disk (Skipped)</span>';
+      } else if (f.existsOnDisk && f.diskBytes > 0) {
+        diskBadge = `<span class="status-badge downloading" style="font-size:10px;padding:2px 6px;margin-right:8px;">⚡ Resume from ${formatBytes(f.diskBytes)}</span>`;
+      }
+
       return `
-        <label class="review-file-row">
+        <label class="review-file-row ${f.isCompleteOnDisk ? 'already-downloaded' : ''}">
           <div class="review-file-left">
             <input type="checkbox" data-path="${f.relativePath}" ${isChecked ? 'checked' : ''} onchange="toggleReviewFile('${f.relativePath}')" />
             <span class="tree-icon">${icon}</span>
             <span class="review-path-text" title="${f.relativePath}">${f.relativePath}</span>
           </div>
-          <div class="review-file-size">${formatBytes(f.size)}</div>
+          <div class="review-file-size" style="display:flex;align-items:center;">
+            ${diskBadge}
+            <span>${formatBytes(f.size)}</span>
+          </div>
         </label>
       `;
     })

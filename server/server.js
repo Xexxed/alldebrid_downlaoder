@@ -397,19 +397,40 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
                 link: item.url,
               },
             ],
-            defaultOutputDir: downloadDir,
+            defaultOutputDir: path.join(downloadDir, filename),
           });
         }
       } catch (err) {
-        errors.push(`Error previewing ${item.original}: ${err.message}`);
+        errors.push(`Error parsing ${item.original || item.url || item.id}: ${err.message}`);
       }
     }
   }
 
-  res.json({
-    previews,
-    errors,
-  });
+  // Annotate all preview files with on-disk state
+  for (const p of previews) {
+    const targetDir = p.defaultOutputDir;
+    if (p.flattenedFiles && p.flattenedFiles.length > 0) {
+      for (const f of p.flattenedFiles) {
+        const relativeNorm = f.relativePath.split('/').join(path.sep);
+        const fullPath = path.join(targetDir, relativeNorm);
+        f.existsOnDisk = false;
+        f.diskBytes = 0;
+        f.isCompleteOnDisk = false;
+        try {
+          if (fs.existsSync(fullPath)) {
+            const stat = fs.statSync(fullPath);
+            f.existsOnDisk = true;
+            f.diskBytes = stat.size;
+            if (f.size > 0 && stat.size >= f.size) {
+              f.isCompleteOnDisk = true;
+            }
+          }
+        } catch {}
+      }
+    }
+  }
+
+  res.json({ previews, errors });
 });
 
 /**

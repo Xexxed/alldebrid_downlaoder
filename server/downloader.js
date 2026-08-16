@@ -57,8 +57,17 @@ export class DownloadEngine extends EventEmitter {
   async addMagnetTask(magnetId, name = '', initialFilesTree = null, customOutputDir = null, selectedRelativePaths = null) {
     const taskId = `magnet_${magnetId}_${Date.now()}`;
     const cleanName = sanitizePathSegment(name) || `Torrent_${magnetId}`;
-    const baseDir = customOutputDir ? path.resolve(customOutputDir) : this.downloadDir;
-    const targetFolder = path.join(baseDir, cleanName);
+    
+    let baseDir = customOutputDir ? path.resolve(customOutputDir) : this.downloadDir;
+    let targetFolder;
+
+    // Check if the destination path already ends with the torrent name
+    if (path.basename(baseDir).toLowerCase() === cleanName.toLowerCase()) {
+      targetFolder = baseDir;
+      baseDir = path.dirname(baseDir);
+    } else {
+      targetFolder = path.join(baseDir, cleanName);
+    }
 
     const task = {
       id: taskId,
@@ -173,6 +182,11 @@ export class DownloadEngine extends EventEmitter {
       task.status = 'error';
       task.error = 'No downloadable files found in this torrent';
       return;
+    }
+
+    // If single file torrent at root, save directly in base output folder
+    if (flatList.length === 1 && !flatList[0].relativePath.includes('/') && task.name === flatList[0].name) {
+      task.outputDir = task.baseOutputDir || this.downloadDir;
     }
 
     // Filter by selected files if requested
@@ -326,6 +340,15 @@ export class DownloadEngine extends EventEmitter {
       let hasDownloading = false;
 
       for (const file of task.files) {
+        // Verify on-disk status for non-downloading files
+        if (file.status !== 'completed' && file.status !== 'downloading') {
+          this.checkExistingFileSize(file);
+        }
+
+        if (file.status === 'completed') {
+          continue;
+        }
+
         if (file.status === 'downloading') {
           hasDownloading = true;
           allFilesDone = false;
@@ -344,6 +367,8 @@ export class DownloadEngine extends EventEmitter {
         }
       }
 
+      this.updateTaskProgress(task);
+
       if (allFilesDone && task.files.length > 0) {
         task.status = 'completed';
         task.completedAt = new Date().toISOString();
@@ -359,6 +384,14 @@ export class DownloadEngine extends EventEmitter {
    * Handles downloading a single file with folder creation, link unlock, and range resume
    */
   async downloadFileStream(task, file) {
+    // 1. Check if file is already fully downloaded on disk before making any network calls
+    this.checkExistingFileSize(file);
+    if (file.status === 'completed') {
+      this.updateTaskProgress(task);
+      this.processQueue();
+      return;
+    }
+
     file.status = 'downloading';
     file.error = null;
     this.emit('fileStatusChange', { task, file });
@@ -367,11 +400,11 @@ export class DownloadEngine extends EventEmitter {
     let writeStream = null;
 
     try {
-      // 1. Ensure target directory exists on disk (preserving folder structure)
+      // 2. Ensure target directory exists on disk (preserving folder structure)
       const targetDir = path.dirname(file.fullLocalPath);
       await fs.promises.mkdir(targetDir, { recursive: true });
 
-      // 2. Check resume offset
+      // 3. Check resume offset
       let startOffset = 0;
       if (fs.existsSync(file.fullLocalPath)) {
         const stat = await fs.promises.stat(file.fullLocalPath);
@@ -452,24 +485,33 @@ export class DownloadEngine extends EventEmitter {
   async pipeResponseToDisk(task, file, response, startOffset, abortController) {
     const writeStream = fs.createWriteStream(file.fullLocalPath, {
       flags: startOffset > 0 ? 'a' : 'w',
+      highWaterMark: 1024 * 1024, // 1MB buffer to prevent OS write cache flooding
     });
 
-    this.activeFileStreams.set(file.id, { abortController, writeStream });
+    const reader = response.body.getReader();
+    this.activeFileStreams.set(file.id, { abortController, writeStream, reader });
+
+    const abortHandler = () => {
+      try { reader.cancel(); } catch {}
+      try { writeStream.destroy(); } catch {}
+    };
+
+    abortController.signal.addEventListener('abort', abortHandler, { once: true });
 
     return new Promise((resolve, reject) => {
-      const reader = response.body.getReader();
-
       const pump = async () => {
         try {
           while (true) {
             if (abortController.signal.aborted) {
-              writeStream.end();
+              try { await reader.cancel(); } catch {}
+              writeStream.destroy();
               return resolve();
             }
 
             const { done, value } = await reader.read();
             if (done) {
               writeStream.end();
+              await new Promise((res) => writeStream.once('finish', res));
               break;
             }
 
@@ -489,8 +531,15 @@ export class DownloadEngine extends EventEmitter {
           file.progress = 100;
           resolve();
         } catch (err) {
+          try { await reader.cancel(); } catch {}
           writeStream.destroy();
-          reject(err);
+          if (abortController.signal.aborted) {
+            resolve();
+          } else {
+            reject(err);
+          }
+        } finally {
+          abortController.signal.removeEventListener('abort', abortHandler);
         }
       };
 
@@ -568,7 +617,9 @@ export class DownloadEngine extends EventEmitter {
         file.status = 'paused';
         const stream = this.activeFileStreams.get(file.id);
         if (stream) {
-          stream.abortController.abort();
+          try { stream.abortController.abort(); } catch {}
+          try { stream.reader?.cancel(); } catch {}
+          try { stream.writeStream?.destroy(); } catch {}
           this.activeFileStreams.delete(file.id);
         }
       } else if (file.status === 'pending') {
@@ -589,12 +640,16 @@ export class DownloadEngine extends EventEmitter {
 
     task.status = 'ready_to_download';
     for (const file of task.files) {
-      if (file.status === 'paused' || file.status === 'error') {
-        file.status = 'pending';
-        file.error = null;
+      this.checkExistingFileSize(file);
+      if (file.status !== 'completed') {
+        if (file.status === 'paused' || file.status === 'error') {
+          file.status = 'pending';
+          file.error = null;
+        }
       }
     }
 
+    this.updateTaskProgress(task);
     this.emit('taskUpdated', task);
     this.processQueue();
     return true;
@@ -610,13 +665,15 @@ export class DownloadEngine extends EventEmitter {
     task.status = 'ready_to_download';
     task.error = null;
     for (const file of task.files) {
-      if (file.status === 'error') {
+      this.checkExistingFileSize(file);
+      if (file.status !== 'completed' && file.status === 'error') {
         file.status = 'pending';
         file.error = null;
         file.directUrl = null; // Clear cached URL to re-unlock
       }
     }
 
+    this.updateTaskProgress(task);
     this.emit('taskUpdated', task);
     this.processQueue();
     return true;
@@ -633,7 +690,9 @@ export class DownloadEngine extends EventEmitter {
     for (const file of task.files) {
       const stream = this.activeFileStreams.get(file.id);
       if (stream) {
-        stream.abortController.abort();
+        try { stream.abortController.abort(); } catch {}
+        try { stream.reader?.cancel(); } catch {}
+        try { stream.writeStream?.destroy(); } catch {}
         this.activeFileStreams.delete(file.id);
       }
     }
