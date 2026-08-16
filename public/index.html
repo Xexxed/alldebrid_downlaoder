@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AllDebrid Torrent & Magnet Downloader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body class="dark-theme">
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-icon">⚡</div>
+        <div class="logo-text">
+          <h1>AllDebrid <span>Downloader</span></h1>
+          <span class="version-badge">v4.1 Pro</span>
+        </div>
+      </div>
+
+      <div class="header-stats">
+        <div class="stat-pill speed-pill">
+          <span class="stat-icon">⚡</span>
+          <div class="stat-info">
+            <span class="stat-label">Global Speed</span>
+            <span class="stat-value" id="globalSpeed">0.0 MB/s</span>
+          </div>
+        </div>
+
+        <div class="stat-pill user-pill" id="userPill">
+          <span class="stat-icon" id="userStatusIcon">👤</span>
+          <div class="stat-info">
+            <span class="stat-label" id="userStatusLabel">Account</span>
+            <span class="stat-value" id="userStatusValue">Connecting...</span>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-glow" id="openAddModalBtn">
+          <span class="btn-icon">➕</span> Add Download
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Navigation Bar -->
+    <nav class="main-nav">
+      <div class="nav-tabs">
+        <button class="nav-tab active" data-tab="active">
+          <span class="tab-icon">📥</span> Active Downloads
+          <span class="tab-badge" id="activeCount">0</span>
+        </button>
+        <button class="nav-tab" data-tab="completed">
+          <span class="tab-icon">✅</span> Completed
+          <span class="tab-badge" id="completedCount">0</span>
+        </button>
+        <button class="nav-tab" data-tab="cloud">
+          <span class="tab-icon">☁️</span> AllDebrid Cloud Torrents
+          <span class="tab-badge" id="cloudCount">0</span>
+        </button>
+        <button class="nav-tab" data-tab="settings">
+          <span class="tab-icon">⚙️</span> Settings
+        </button>
+      </div>
+
+      <div class="nav-actions">
+        <div class="connection-status" id="wsStatus">
+          <span class="status-dot"></span> Live
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="content-area">
+      <!-- Active Downloads Tab -->
+      <section class="tab-content active" id="tab-active">
+        <div class="section-toolbar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="activeSearchInput" placeholder="Filter active downloads..." />
+          </div>
+          <div class="toolbar-stats">
+            <span id="activeStatsText">0 tasks in queue</span>
+          </div>
+        </div>
+
+        <div class="tasks-grid" id="activeTasksList">
+          <!-- Populated dynamically -->
+          <div class="empty-state" id="emptyActiveState">
+            <div class="empty-icon">📥</div>
+            <h3>No Active Downloads</h3>
+            <p>Paste a <code>getMagnet</code> link, magnet URI, or drop a <code>.torrent</code> file to start downloading with full folder preservation.</p>
+            <button class="btn btn-secondary" onclick="document.getElementById('openAddModalBtn').click()">+ Add Download</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Completed Downloads Tab -->
+      <section class="tab-content" id="tab-completed">
+        <div class="section-toolbar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="completedSearchInput" placeholder="Filter completed downloads..." />
+          </div>
+          <div class="toolbar-stats">
+            <span id="completedStatsText">0 completed tasks</span>
+          </div>
+        </div>
+
+        <div class="tasks-grid" id="completedTasksList">
+          <!-- Populated dynamically -->
+          <div class="empty-state" id="emptyCompletedState">
+            <div class="empty-icon">✅</div>
+            <h3>No Completed Downloads Yet</h3>
+            <p>Finished downloads will appear here with instant access to their local folders.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Cloud Torrents Tab -->
+      <section class="tab-content" id="tab-cloud">
+        <div class="section-toolbar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="cloudSearchInput" placeholder="Search AllDebrid cloud torrents..." />
+          </div>
+          <div class="toolbar-actions">
+            <button class="btn btn-secondary btn-sm" id="refreshCloudBtn">
+              <span class="btn-icon">🔄</span> Refresh Cloud
+            </button>
+          </div>
+        </div>
+
+        <div class="cloud-torrents-container" id="cloudTorrentsList">
+          <div class="loading-spinner-container">
+            <div class="spinner"></div>
+            <p>Loading cloud magnets from AllDebrid...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings Tab -->
+      <section class="tab-content" id="tab-settings">
+        <div class="settings-card">
+          <div class="settings-header">
+            <h2>⚙️ Application Settings</h2>
+            <p>Configure your AllDebrid API key, download destination, and performance limits.</p>
+          </div>
+
+          <form id="settingsForm" class="settings-form">
+            <div class="form-group">
+              <label for="apiKeyInput">
+                AllDebrid API Key
+                <a href="https://alldebrid.com/apikeys" target="_blank" class="help-link">Get your API key ↗</a>
+              </label>
+              <div class="input-with-button">
+                <input type="password" id="apiKeyInput" placeholder="Paste your AllDebrid API Key" autocomplete="off" />
+                <button type="button" class="btn btn-icon" id="toggleApiKeyVisibility" title="Toggle visibility">👁️</button>
+              </div>
+              <small class="form-hint">Stored securely in your <code>.env</code> file.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="downloadDirInput">Download Directory</label>
+              <div class="input-with-button">
+                <input type="text" id="downloadDirInput" placeholder="e.g. D:\Downloads or ./downloads" />
+                <button type="button" class="btn btn-secondary" id="browseDownloadDirBtn">📂 Browse</button>
+              </div>
+              <small class="form-hint">All torrents and files will maintain their original subfolder hierarchy inside this directory.</small>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="maxConcurrentInput">Max Concurrent File Downloads</label>
+                <div class="range-with-number">
+                  <input type="range" id="maxConcurrentRange" min="1" max="10" value="3" />
+                  <span class="range-val" id="maxConcurrentVal">3</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-actions">
+              <button type="submit" class="btn btn-primary btn-glow">Save Settings</button>
+              <button type="button" class="btn btn-secondary" id="testApiBtn">Verify API Key</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: Add Download -->
+  <div class="modal-backdrop" id="addDownloadModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <h3>➕ Add New Download</h3>
+          <p>Add torrents, magnet links, getMagnet URLs, or upload .torrent files</p>
+        </div>
+        <button class="btn-close" id="closeAddModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-modal-tab="text">📝 Paste Links & Magnets</button>
+        <button class="modal-tab" data-modal-tab="file">📁 Upload .torrent File</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Text Input Tab -->
+        <div class="modal-tab-pane active" id="modal-tab-text">
+          <div class="form-group">
+            <label for="downloadInputText">Supported Formats:</label>
+            <div class="supported-tags">
+              <span class="tag">https://alldebrid.com/getMagnet/685554127</span>
+              <span class="tag">magnet:?xt=urn:btih:...</span>
+              <span class="tag">40-char Hash</span>
+              <span class="tag">Hoster / Debrid Links</span>
+            </div>
+            <textarea id="downloadInputText" rows="6" placeholder="Paste links here (one per line)...&#10;https://alldebrid.com/getMagnet/685554127&#10;magnet:?xt=urn:btih:..."></textarea>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" id="cancelAddBtn">Cancel</button>
+            <button class="btn btn-primary btn-glow" id="submitAddBtn">Review & Start Download</button>
+          </div>
+        </div>
+
+        <!-- File Upload Tab -->
+        <div class="modal-tab-pane" id="modal-tab-file">
+          <div class="dropzone" id="torrentDropzone">
+            <div class="dropzone-icon">📥</div>
+            <h4>Drag & Drop <code>.torrent</code> files here</h4>
+            <p>or click to browse your computer</p>
+            <input type="file" id="torrentFileInput" accept=".torrent" multiple style="display: none;" />
+          </div>
+          <div class="selected-files-list" id="selectedFilesList"></div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" id="cancelUploadBtn">Cancel</button>
+            <button class="btn btn-primary btn-glow" id="submitUploadBtn" disabled>Review & Download</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Download Review & Structure Verification -->
+  <div class="modal-backdrop" id="downloadReviewModal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title">
+          <h3>🔍 Review Download & Verify Structure</h3>
+          <p>Verify folder, subfolder, and file paths before creating files on disk</p>
+        </div>
+        <button class="btn-close" id="closeReviewModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="review-meta-card" id="reviewMetaCard">
+          <div class="review-header-info">
+            <div class="review-title" id="reviewTorrentName">Torrent Name</div>
+            <div class="review-badges">
+              <span class="badge" id="reviewTotalSize">0 MB</span>
+              <span class="badge" id="reviewFileCount">0 files</span>
+              <span class="badge" id="reviewStatusBadge">Ready</span>
+            </div>
+          </div>
+
+          <div class="review-destination-box">
+            <div class="dest-label">📁 Destination Folder on Disk:</div>
+            <div class="dest-row">
+              <input type="text" id="reviewOutputDirInput" class="dest-input" />
+              <button type="button" class="btn btn-secondary btn-sm" id="changeReviewDirBtn">📂 Browse Folder</button>
+            </div>
+            <small class="dest-hint">All subfolders and files shown below will be preserved inside this location.</small>
+          </div>
+        </div>
+
+        <div class="review-tree-header">
+          <h4>Folder & File Breakdown (<span id="reviewSelectedCount">0</span> selected)</h4>
+          <div class="review-tree-actions">
+            <button type="button" class="btn-link" id="selectAllReviewFilesBtn">Select All</button>
+            <span>•</span>
+            <button type="button" class="btn-link" id="deselectAllReviewFilesBtn">Deselect All</button>
+          </div>
+        </div>
+
+        <div class="review-tree-container" id="reviewTreeContainer">
+          <!-- Filled dynamically -->
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelReviewBtn">Cancel / Back</button>
+        <button class="btn btn-primary btn-glow" id="confirmReviewDownloadBtn">
+          🚀 Confirm & Start Download
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Interactive Folder Browser -->
+  <div class="modal-backdrop" id="folderBrowserModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <h3>📂 Select Download Directory</h3>
+          <p>Choose or create a destination folder on your system</p>
+        </div>
+        <button class="btn-close" id="closeFolderBrowserBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="browser-drives-bar" id="browserDrivesBar">
+          <!-- Drive pills -->
+        </div>
+
+        <div class="browser-path-bar">
+          <button type="button" class="btn-icon btn-sm" id="browserUpDirBtn" title="Go up one level">⬆️</button>
+          <div class="browser-current-path" id="browserCurrentPathText">C:\</div>
+        </div>
+
+        <div class="browser-folders-list" id="browserFoldersList">
+          <!-- Directory items -->
+        </div>
+
+        <div class="browser-new-folder-row">
+          <input type="text" id="newFolderNameInput" placeholder="New folder name..." />
+          <button type="button" class="btn btn-secondary btn-sm" id="createFolderBtn">+ Create Folder</button>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelFolderBrowserBtn">Cancel</button>
+        <button class="btn btn-primary btn-glow" id="selectFolderConfirmBtn">Select This Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: File Tree Viewer -->
+  <div class="modal-backdrop" id="fileTreeModal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title">
+          <h3 id="treeModalTitle">📁 Torrent File Structure</h3>
+          <p id="treeModalSubtitle">Preserving folder and subfolder hierarchy</p>
+        </div>
+        <button class="btn-close" id="closeTreeModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="tree-container" id="treeContentArea">
+          <div class="spinner"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="closeTreeModalBottomBtn">Close</button>
+        <button class="btn btn-primary" id="openLocalFolderFromTreeBtn">📂 Open Local Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
