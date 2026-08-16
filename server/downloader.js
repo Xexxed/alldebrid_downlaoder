@@ -5,6 +5,8 @@
 import fs from 'fs';
 import path from 'path';
 import EventEmitter from 'events';
+import { Readable, Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 import { flattenFileTree, sanitizePathSegment } from './alldebrid.js';
 
 export class DownloadEngine extends EventEmitter {
@@ -480,71 +482,43 @@ export class DownloadEngine extends EventEmitter {
   }
 
   /**
-   * Pipe incoming HTTP stream to file on disk
+   * Pipe incoming HTTP stream to file on disk using native pipeline and backpressure
    */
   async pipeResponseToDisk(task, file, response, startOffset, abortController) {
     const writeStream = fs.createWriteStream(file.fullLocalPath, {
       flags: startOffset > 0 ? 'a' : 'w',
-      highWaterMark: 1024 * 1024, // 1MB buffer to prevent OS write cache flooding
+      highWaterMark: 512 * 1024, // 512KB chunk buffer for smooth mechanical HDD pacing
     });
 
-    const reader = response.body.getReader();
-    this.activeFileStreams.set(file.id, { abortController, writeStream, reader });
+    this.activeFileStreams.set(file.id, { abortController, writeStream });
 
-    const abortHandler = () => {
-      try { reader.cancel(); } catch {}
-      try { writeStream.destroy(); } catch {}
-    };
+    const nodeReadable = Readable.fromWeb(response.body);
 
-    abortController.signal.addEventListener('abort', abortHandler, { once: true });
-
-    return new Promise((resolve, reject) => {
-      const pump = async () => {
-        try {
-          while (true) {
-            if (abortController.signal.aborted) {
-              try { await reader.cancel(); } catch {}
-              writeStream.destroy();
-              return resolve();
-            }
-
-            const { done, value } = await reader.read();
-            if (done) {
-              writeStream.end();
-              await new Promise((res) => writeStream.once('finish', res));
-              break;
-            }
-
-            if (value) {
-              const ok = writeStream.write(Buffer.from(value));
-              file.downloaded += value.length;
-              file.bytesSample += value.length;
-              file.progress = file.size > 0 ? Math.min(100, Math.round((file.downloaded / file.size) * 100)) : 0;
-
-              if (!ok) {
-                await new Promise((res) => writeStream.once('drain', res));
-              }
-            }
-          }
-
-          file.status = 'completed';
-          file.progress = 100;
-          resolve();
-        } catch (err) {
-          try { await reader.cancel(); } catch {}
-          writeStream.destroy();
-          if (abortController.signal.aborted) {
-            resolve();
-          } else {
-            reject(err);
-          }
-        } finally {
-          abortController.signal.removeEventListener('abort', abortHandler);
-        }
-      };
-
-      pump();
+    const progressTransform = new Transform({
+      transform(chunk, encoding, callback) {
+        file.downloaded += chunk.length;
+        file.bytesSample += chunk.length;
+        file.progress = file.size > 0 ? Math.min(100, Math.round((file.downloaded / file.size) * 100)) : 0;
+        callback(null, chunk);
+      },
     });
+
+    try {
+      await pipeline(nodeReadable, progressTransform, writeStream, {
+        signal: abortController.signal,
+      });
+
+      file.status = 'completed';
+      file.progress = 100;
+    } catch (err) {
+      if (abortController.signal.aborted) {
+        // Aborted cleanly by pause or cancel
+        return;
+      }
+      throw err;
+    } finally {
+      this.activeFileStreams.delete(file.id);
+    }
   }
 
   /**

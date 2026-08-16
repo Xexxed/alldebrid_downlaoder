@@ -3,6 +3,9 @@
  * Express REST API + WebSocket live metrics stream
  */
 
+// Configure larger threadpool for heavy concurrent file I/O operations
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '32';
+
 import express from 'express';
 import http from 'http';
 import path from 'path';
