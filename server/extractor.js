@@ -68,14 +68,23 @@ export function isArchiveFile(filename) {
  * Analyzes a list of files or directory contents to detect archive sets
  * Returns grouped archive objects with entry file and all constituent part files
  */
-export function detectArchiveGroups(filePathsOrObjects) {
+export function detectArchiveGroups(filePathsOrObjects, baseDir = '') {
   const fileList = filePathsOrObjects.map((item) => {
     if (typeof item === 'string') {
-      return { name: path.basename(item), fullPath: path.resolve(item) };
+      const resolved = baseDir ? path.resolve(baseDir, item) : path.resolve(item);
+      return { name: path.basename(item), fullPath: resolved };
+    }
+    const name = item.name || path.basename(item.fullPath || item.fullLocalPath || item.relativePath || '');
+    let fullPath = item.fullPath || item.fullLocalPath;
+    if (!fullPath && item.relativePath) {
+      fullPath = baseDir ? path.resolve(baseDir, item.relativePath) : path.resolve(item.relativePath);
+    }
+    if (!fullPath && name) {
+      fullPath = baseDir ? path.resolve(baseDir, name) : path.resolve(name);
     }
     return {
-      name: item.name || path.basename(item.fullLocalPath || item.relativePath || ''),
-      fullPath: item.fullLocalPath || path.resolve(item.relativePath || item.name),
+      name,
+      fullPath,
     };
   });
 
@@ -248,19 +257,29 @@ export async function extractTaskArchives(task, deleteParts = false) {
   if (task.files && task.files.length > 0) {
     fileList = task.files.map((f) => ({
       name: f.name,
-      fullPath: f.fullLocalPath,
+      fullPath: f.fullLocalPath || (f.relativePath ? path.join(targetDir, f.relativePath) : path.join(targetDir, f.name)),
+      fullLocalPath: f.fullLocalPath || (f.relativePath ? path.join(targetDir, f.relativePath) : path.join(targetDir, f.name)),
     }));
-  } else {
-    try {
-      const dirEntries = fs.readdirSync(targetDir, { withFileTypes: true });
-      fileList = dirEntries.filter((e) => e.isFile()).map((e) => ({
-        name: e.name,
-        fullPath: path.join(targetDir, e.name),
-      }));
-    } catch {}
   }
 
-  const groups = detectArchiveGroups(fileList);
+  // Also scan targetDir directly to ensure we find all archives physically present on disk
+  try {
+    const dirEntries = fs.readdirSync(targetDir, { withFileTypes: true });
+    for (const e of dirEntries) {
+      if (e.isFile() && isArchiveFile(e.name)) {
+        const diskFullPath = path.join(targetDir, e.name);
+        if (!fileList.some((f) => f.fullPath === diskFullPath)) {
+          fileList.push({
+            name: e.name,
+            fullPath: diskFullPath,
+            fullLocalPath: diskFullPath,
+          });
+        }
+      }
+    }
+  } catch {}
+
+  const groups = detectArchiveGroups(fileList, targetDir);
   if (groups.length === 0) {
     return { extractedCount: 0, deletedFiles: [], message: 'No archive files detected' };
   }
@@ -270,9 +289,11 @@ export async function extractTaskArchives(task, deleteParts = false) {
 
   for (const group of groups) {
     if (!group.entryFile || !fs.existsSync(group.entryFile)) {
+      console.warn(`[Extractor] Entry archive file not found on disk: ${group.entryFile}`);
       continue;
     }
 
+    console.log(`[Extractor] Extracting ${group.type} entry: ${group.entryFile} into ${targetDir}`);
     // Run extraction
     await extractArchive(group.entryFile, targetDir);
     extractedCount++;
@@ -284,12 +305,17 @@ export async function extractTaskArchives(task, deleteParts = false) {
           if (fs.existsSync(partPath)) {
             fs.unlinkSync(partPath);
             deletedFiles.push(partPath);
+            console.log(`[Extractor] Cleaned up part file: ${partPath}`);
           }
         } catch (err) {
           console.error(`Failed to delete archive part ${partPath}:`, err);
         }
       }
     }
+  }
+
+  if (extractedCount === 0) {
+    throw new Error(`Found ${groups.length} archive group(s) but entry archive file(s) could not be found on disk.`);
   }
 
   return {
