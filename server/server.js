@@ -3,9 +3,6 @@
  * Express REST API + WebSocket live metrics stream
  */
 
-// Configure larger threadpool for heavy concurrent file I/O operations
-process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '32';
-
 import express from 'express';
 import http from 'http';
 import path from 'path';
@@ -13,15 +10,10 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import multer from 'multer';
-import cors from 'cors';
-import dotenv from 'dotenv';
 import { exec } from 'child_process';
 
-import { AllDebridClient, parseDownloadInput, flattenFileTree, sanitizePathSegment } from './alldebrid.js';
+import { AllDebridClient, parseDownloadInput, flattenFileTree, sanitizePathSegment, normalizeMagnetResponse } from './alldebrid.js';
 import { DownloadEngine } from './downloader.js';
-
-// Load environment variables
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,23 +24,18 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Helper to detect drives on Windows
-function getAvailableDrives() {
+// Detect drives on Windows
+const AVAILABLE_DRIVES = (() => {
   if (process.platform === 'win32') {
-    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-    const drives = [];
-    for (const l of letters) {
-      const driveRoot = `${l}:\\`;
-      try {
-        if (fs.existsSync(driveRoot)) {
-          drives.push(driveRoot);
-        }
-      } catch {}
-    }
+    const drives = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+      .map((l) => `${l}:\\`)
+      .filter((d) => {
+        try { return fs.existsSync(d); } catch { return false; }
+      });
     return drives.length > 0 ? drives : ['C:\\'];
   }
   return ['/'];
-}
+})();
 
 // Multer memory storage for .torrent uploads
 const upload = multer({
@@ -68,7 +55,6 @@ const engine = new DownloadEngine(client, {
 });
 
 // Middleware
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(ROOT_DIR, 'public')));
@@ -133,7 +119,7 @@ wss.on('connection', (ws) => {
  */
 app.get('/api/browse-directory', (req, res) => {
   try {
-    const drives = getAvailableDrives();
+    const drives = AVAILABLE_DRIVES;
     let targetPath = req.query.path ? path.resolve(req.query.path) : downloadDir;
 
     if (!req.query.path && !fs.existsSync(targetPath)) {
@@ -231,6 +217,50 @@ app.get('/api/status', async (req, res) => {
 });
 
 /**
+ * Resolve torrent/magnet preview metadata and file list
+ */
+async function resolveMagnetPreview(magnetId, defaultName = '', defaultSize = 0, isReady = false, initialFiles = null) {
+  let name = defaultName ? sanitizePathSegment(defaultName) : `Torrent_${magnetId}`;
+  let filesTree = initialFiles;
+  let totalSize = defaultSize;
+  let ready = isReady;
+
+  try {
+    const [statusRes, filesRes] = await Promise.all([
+      ready ? null : client.getMagnetStatus(magnetId).catch(() => null),
+      client.getMagnetFiles(magnetId).catch(() => null),
+    ]);
+
+    const mStatus = normalizeMagnetResponse(statusRes, magnetId);
+    if (mStatus?.filename) name = sanitizePathSegment(mStatus.filename);
+    if (mStatus?.size) totalSize = mStatus.size;
+    if (mStatus?.statusCode === 4) ready = true;
+
+    const mFiles = normalizeMagnetResponse(filesRes, magnetId)?.files;
+    if (mFiles) {
+      filesTree = mFiles;
+      ready = true;
+    }
+  } catch {}
+
+  const flattenedFiles = filesTree ? flattenFileTree(filesTree) : [];
+  if (flattenedFiles.length > 0) {
+    totalSize = flattenedFiles.reduce((acc, f) => acc + f.size, 0);
+  }
+
+  return {
+    type: 'torrent',
+    magnetId,
+    name,
+    totalSize,
+    isReady: ready,
+    filesTree,
+    flattenedFiles,
+    defaultOutputDir: path.join(downloadDir, name),
+  };
+}
+
+/**
  * Preview Download Structure before queueing
  */
 app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) => {
@@ -254,35 +284,7 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
         }
 
         if (fileData) {
-          const magnetId = fileData.id;
-          let filesTree = null;
-          let flattenedFiles = [];
-          let totalSize = fileData.size || 0;
-          let isReady = fileData.ready;
-
-          // If ready, query files tree
-          try {
-            const filesRes = await client.getMagnetFiles(magnetId);
-            const mData = filesRes?.magnets?.[0];
-            if (mData?.files) {
-              filesTree = mData.files;
-              flattenedFiles = flattenFileTree(filesTree);
-              totalSize = flattenedFiles.reduce((acc, f) => acc + f.size, 0);
-              isReady = true;
-            }
-          } catch {}
-
-          const name = sanitizePathSegment(fileData.name || file.originalname.replace(/\.torrent$/i, ''));
-          previews.push({
-            type: 'torrent',
-            magnetId,
-            name,
-            totalSize,
-            isReady,
-            filesTree,
-            flattenedFiles,
-            defaultOutputDir: path.join(downloadDir, name),
-          });
+          previews.push(await resolveMagnetPreview(fileData.id, fileData.name || file.originalname.replace(/\.torrent$/i, ''), fileData.size, fileData.ready));
         }
       } catch (err) {
         errors.push(`Error processing ${file.originalname}: ${err.message}`);
@@ -296,51 +298,7 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
     for (const item of items) {
       try {
         if (item.type === 'getMagnet' || item.type === 'magnetId') {
-          const magnetId = item.id;
-          let name = `Torrent_${magnetId}`;
-          let filesTree = null;
-          let flattenedFiles = [];
-          let totalSize = 0;
-          let isReady = false;
-
-          try {
-            const [statusRes, filesRes] = await Promise.all([
-              client.getMagnetStatus(magnetId).catch(() => null),
-              client.getMagnetFiles(magnetId).catch(() => null),
-            ]);
-
-            const mStatus = statusRes?.magnets?.find((m) => m.id === magnetId) || statusRes?.magnets?.[0];
-            if (mStatus?.filename) {
-              name = sanitizePathSegment(mStatus.filename);
-            }
-            if (mStatus?.size) {
-              totalSize = mStatus.size;
-            }
-            if (mStatus?.statusCode === 4) {
-              isReady = true;
-            }
-
-            const mFiles = filesRes?.magnets?.[0];
-            if (mFiles?.files) {
-              filesTree = mFiles.files;
-              flattenedFiles = flattenFileTree(filesTree);
-              totalSize = flattenedFiles.reduce((acc, f) => acc + f.size, 0);
-              isReady = true;
-            }
-          } catch (err) {
-            console.error('Error fetching magnet preview:', err);
-          }
-
-          previews.push({
-            type: 'torrent',
-            magnetId,
-            name,
-            totalSize,
-            isReady,
-            filesTree,
-            flattenedFiles,
-            defaultOutputDir: path.join(downloadDir, name),
-          });
+          previews.push(await resolveMagnetPreview(item.id));
         } else if (item.type === 'magnet') {
           const uploadRes = await client.uploadMagnet(item.uri);
           const uploaded = uploadRes?.magnets?.[0];
@@ -351,35 +309,7 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
           }
 
           if (uploaded) {
-            const magnetId = uploaded.id;
-            let filesTree = null;
-            let flattenedFiles = [];
-            let totalSize = uploaded.size || 0;
-            let isReady = uploaded.ready;
-
-            if (uploaded.ready) {
-              try {
-                const filesRes = await client.getMagnetFiles(magnetId);
-                const mFiles = filesRes?.magnets?.[0];
-                if (mFiles?.files) {
-                  filesTree = mFiles.files;
-                  flattenedFiles = flattenFileTree(filesTree);
-                  totalSize = flattenedFiles.reduce((acc, f) => acc + f.size, 0);
-                }
-              } catch {}
-            }
-
-            const name = sanitizePathSegment(uploaded.name || `Torrent_${magnetId}`);
-            previews.push({
-              type: 'torrent',
-              magnetId,
-              name,
-              totalSize,
-              isReady,
-              filesTree,
-              flattenedFiles,
-              defaultOutputDir: path.join(downloadDir, name),
-            });
+            previews.push(await resolveMagnetPreview(uploaded.id, uploaded.name, uploaded.size, uploaded.ready));
           }
         } else if (item.type === 'directLink') {
           const unlockData = await client.unlockLink(item.url);
@@ -392,14 +322,7 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
             totalSize: size,
             isReady: true,
             filesTree: null,
-            flattenedFiles: [
-              {
-                name: filename,
-                relativePath: filename,
-                size,
-                link: item.url,
-              },
-            ],
+            flattenedFiles: [{ name: filename, relativePath: filename, size, link: item.url }],
             defaultOutputDir: path.join(downloadDir, filename),
           });
         }
@@ -669,8 +592,9 @@ app.get('/api/cloud-magnets', async (req, res) => {
  */
 app.post('/api/cloud-magnets/:id/download', async (req, res) => {
   const magnetId = Number(req.params.id);
+  const name = req.body?.name || '';
   try {
-    const task = await engine.addMagnetTask(magnetId);
+    const task = await engine.addMagnetTask(magnetId, name);
     res.json({ success: true, task });
   } catch (err) {
     res.status(500).json({ error: err.message });

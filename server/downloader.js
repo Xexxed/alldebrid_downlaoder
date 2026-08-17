@@ -7,7 +7,7 @@ import path from 'path';
 import EventEmitter from 'events';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
-import { flattenFileTree, sanitizePathSegment } from './alldebrid.js';
+import { flattenFileTree, sanitizePathSegment, normalizeMagnetResponse } from './alldebrid.js';
 
 export class DownloadEngine extends EventEmitter {
   constructor(alldebridClient, options = {}) {
@@ -186,9 +186,27 @@ export class DownloadEngine extends EventEmitter {
       return;
     }
 
-    // If single file torrent at root, save directly in base output folder
-    if (flatList.length === 1 && !flatList[0].relativePath.includes('/') && task.name === flatList[0].name) {
-      task.outputDir = task.baseOutputDir || this.downloadDir;
+    // If task name is still default Torrent_<id>, derive real name from tree or single file
+    if (task.name.startsWith('Torrent_')) {
+      if (filesTree.length === 1 && filesTree[0].n && Array.isArray(filesTree[0].e)) {
+        task.name = sanitizePathSegment(filesTree[0].n);
+      } else if (flatList.length === 1 && flatList[0].name) {
+        task.name = flatList[0].name;
+      }
+    }
+
+    // Determine target output directory
+    const baseDir = task.baseOutputDir || this.downloadDir;
+    if (flatList.length === 1 && !flatList[0].relativePath.includes('/')) {
+      // Single file at root: save directly in base output folder (no unnecessary wrapper subfolder)
+      task.outputDir = baseDir;
+    } else {
+      // Multi-file folder: preserve folder structure inside task folder
+      if (path.basename(baseDir).toLowerCase() === task.name.toLowerCase()) {
+        task.outputDir = baseDir;
+      } else {
+        task.outputDir = path.join(baseDir, task.name);
+      }
     }
 
     // Filter by selected files if requested
@@ -264,32 +282,42 @@ export class DownloadEngine extends EventEmitter {
     if (!task.magnetId) return;
 
     try {
-      // 1. Check if files are already ready on AllDebrid
-      const filesRes = await this.client.getMagnetFiles(task.magnetId);
-      const magnetData = filesRes?.magnets?.[0];
+      const [filesRes, statusRes] = await Promise.all([
+        this.client.getMagnetFiles(task.magnetId).catch(() => null),
+        this.client.getMagnetStatus(task.magnetId).catch(() => null),
+      ]);
+
+      const magnetData = normalizeMagnetResponse(filesRes, task.magnetId);
+      const mStatus = normalizeMagnetResponse(statusRes, task.magnetId);
+
+      // Update name if still default
+      const resolvedName = sanitizePathSegment(mStatus?.filename || magnetData?.filename || magnetData?.name || '');
+      if (resolvedName && (task.name.startsWith('Torrent_') || !task.name)) {
+        task.name = resolvedName;
+        const baseDir = task.baseOutputDir || this.downloadDir;
+        if (path.basename(baseDir).toLowerCase() === resolvedName.toLowerCase()) {
+          task.outputDir = baseDir;
+        } else {
+          task.outputDir = path.join(baseDir, resolvedName);
+        }
+      }
+
+      if (mStatus) {
+        task.cloudStatus = mStatus.status;
+        task.cloudProgress = mStatus.statusCode === 4 ? 100 : (mStatus.size > 0 && typeof mStatus.downloaded === 'number') ? Math.round((mStatus.downloaded / mStatus.size) * 100) : 0;
+      }
 
       if (magnetData && Array.isArray(magnetData.files) && magnetData.files.length > 0) {
         this.setupTaskFiles(task, magnetData.files);
         return;
       }
 
-      // 2. If files not returned, query magnet status
-      const statusRes = await this.client.getMagnetStatus(task.magnetId);
-      const mStatus = statusRes?.magnets?.find((m) => m.id === task.magnetId) || statusRes?.magnets?.[0];
-
       if (mStatus) {
-        task.cloudStatus = mStatus.status;
-        task.cloudProgress = mStatus.size > 0 ? Math.round((mStatus.downloaded / mStatus.size) * 100) : 0;
-        if (mStatus.filename && task.name.startsWith('Torrent_')) {
-          task.name = sanitizePathSegment(mStatus.filename);
-          task.outputDir = path.join(this.downloadDir, task.name);
-        }
-
         if (mStatus.statusCode === 4) {
-          // Ready! Query files now
+          // Ready! Query files
           const filesRetry = await this.client.getMagnetFiles(task.magnetId);
-          const readyData = filesRetry?.magnets?.[0];
-          if (readyData && readyData.files) {
+          const readyData = normalizeMagnetResponse(filesRetry, task.magnetId);
+          if (readyData && Array.isArray(readyData.files) && readyData.files.length > 0) {
             this.setupTaskFiles(task, readyData.files);
             return;
           }
@@ -342,11 +370,6 @@ export class DownloadEngine extends EventEmitter {
       let hasDownloading = false;
 
       for (const file of task.files) {
-        // Verify on-disk status for non-downloading files
-        if (file.status !== 'completed' && file.status !== 'downloading') {
-          this.checkExistingFileSize(file);
-        }
-
         if (file.status === 'completed') {
           continue;
         }
@@ -592,7 +615,6 @@ export class DownloadEngine extends EventEmitter {
         const stream = this.activeFileStreams.get(file.id);
         if (stream) {
           try { stream.abortController.abort(); } catch {}
-          try { stream.reader?.cancel(); } catch {}
           try { stream.writeStream?.destroy(); } catch {}
           this.activeFileStreams.delete(file.id);
         }
@@ -665,7 +687,6 @@ export class DownloadEngine extends EventEmitter {
       const stream = this.activeFileStreams.get(file.id);
       if (stream) {
         try { stream.abortController.abort(); } catch {}
-        try { stream.reader?.cancel(); } catch {}
         try { stream.writeStream?.destroy(); } catch {}
         this.activeFileStreams.delete(file.id);
       }

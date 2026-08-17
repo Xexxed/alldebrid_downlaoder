@@ -498,7 +498,8 @@ function renderCloudMagnets() {
     .map((m) => {
       const isReady = m.statusCode === 4 || m.status === 'Ready';
       const isDownloading = m.statusCode === 1 || m.status === 'Downloading';
-      const progress = m.size > 0 ? Math.round((m.downloaded / m.size) * 100) : isReady ? 100 : 0;
+      const progress = isReady ? 100 : (m.size > 0 && typeof m.downloaded === 'number') ? Math.round((m.downloaded / m.size) * 100) : 0;
+      const encodedName = encodeURIComponent(m.filename || '');
 
       return `
         <div class="cloud-card">
@@ -513,7 +514,7 @@ function renderCloudMagnets() {
             </div>
           </div>
           <div class="cloud-actions">
-            <button class="btn btn-primary btn-sm" onclick="downloadCloudMagnet(${m.id})">
+            <button class="btn btn-primary btn-sm" onclick="downloadCloudMagnet(${m.id}, decodeURIComponent('${encodedName}'))">
               <span class="btn-svg">${ICONS.drive}</span>
               <span>DOWNLOAD TO DISK</span>
             </button>
@@ -568,9 +569,13 @@ window.cancelTask = async function (taskId) {
   }
 };
 
-window.downloadCloudMagnet = async function (magnetId) {
+window.downloadCloudMagnet = async function (magnetId, name = '') {
   try {
-    const res = await fetch(`/api/cloud-magnets/${magnetId}/download`, { method: 'POST' });
+    const res = await fetch(`/api/cloud-magnets/${magnetId}/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 

@@ -38,15 +38,11 @@ export class AllDebridClient {
       if (options.isFormData) {
         fetchOptions.body = options.body;
       } else if (typeof options.body === 'object') {
-        const formData = new URLSearchParams();
-        for (const [key, value] of Object.entries(options.body)) {
-          if (Array.isArray(value)) {
-            value.forEach((v) => formData.append(`${key}[]`, v));
-          } else if (value !== undefined && value !== null) {
-            formData.append(key, value);
-          }
+        const params = new URLSearchParams();
+        for (const [k, v] of Object.entries(options.body)) {
+          (Array.isArray(v) ? v : [v]).forEach((val) => val != null && params.append(Array.isArray(v) ? `${k}[]` : k, val));
         }
-        fetchOptions.body = formData.toString();
+        fetchOptions.body = params.toString();
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
       } else {
         fetchOptions.body = options.body;
@@ -171,6 +167,44 @@ export class AllDebridClient {
       body: { id },
     });
   }
+}
+
+/**
+ * Normalizes AllDebrid API magnet response data whether returned as an Array, single Object, or keyed Object
+ * @param {Object} res - Response from getMagnetStatus or getMagnetFiles
+ * @param {number|string} [magnetId] - Optional specific magnet ID to look for
+ * @returns {Object|null}
+ */
+export function normalizeMagnetResponse(res, magnetId = null) {
+  if (!res || !res.magnets) return null;
+  const { magnets } = res;
+
+  if (Array.isArray(magnets)) {
+    if (magnetId != null) {
+      const match = magnets.find((m) => m && (m.id === Number(magnetId) || String(m.id) === String(magnetId)));
+      return match || magnets[0] || null;
+    }
+    return magnets[0] || null;
+  }
+
+  if (typeof magnets === 'object') {
+    if (magnetId != null && magnets[magnetId]) {
+      return magnets[magnetId];
+    }
+    if (magnets.id !== undefined || magnets.files !== undefined || magnets.filename !== undefined) {
+      return magnets;
+    }
+    const values = Object.values(magnets);
+    if (values.length > 0) {
+      if (magnetId != null) {
+        const match = values.find((m) => m && (m.id === Number(magnetId) || String(m.id) === String(magnetId)));
+        return match || values[0] || null;
+      }
+      return values[0] || null;
+    }
+  }
+
+  return null;
 }
 
 /**

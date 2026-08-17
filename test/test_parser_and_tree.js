@@ -172,4 +172,69 @@ assert.strictEqual(
 );
 
 console.log('✅ Top-Level Folder Wrapper Unwrapping & Path Assembly passed (No redundant folders!)');
+
+// Test 5: Single-file root torrent (e.g. Scary Movie) setupTaskFiles resolution
+console.log('Test 5: Single-File Root Torrent Resolution');
+import { DownloadEngine } from '../server/downloader.js';
+
+const mockEngine = new DownloadEngine({
+  getMagnetFiles: async () => ({ magnets: [] }),
+  getMagnetStatus: async () => ({ magnets: [] }),
+  unlockLink: async () => ({}),
+}, { downloadDir: 'F:\\Torrents' });
+
+clearInterval(mockEngine.speedTrackerInterval);
+clearInterval(mockEngine.pollInterval);
+
+const scaryMovieTask = {
+  id: 'magnet_686406964_123',
+  magnetId: 686406964,
+  name: 'Torrent_686406964',
+  baseOutputDir: 'F:\\Torrents',
+  outputDir: 'F:\\Torrents\\Torrent_686406964',
+  files: [],
+};
+
+const scaryMovieTree = [
+  {
+    n: 'Scary Movie Extended Cut 2026 1080p WEB-DL HEVC x265 5.1 BONE.mkv',
+    s: 1696614400,
+    l: 'https://alldebrid.com/f/scarymovie',
+  },
+];
+
+mockEngine.setupTaskFiles(scaryMovieTask, scaryMovieTree);
+assert.strictEqual(scaryMovieTask.name, 'Scary Movie Extended Cut 2026 1080p WEB-DL HEVC x265 5.1 BONE.mkv');
+assert.strictEqual(scaryMovieTask.outputDir, 'F:\\Torrents');
+assert.strictEqual(
+  scaryMovieTask.files[0].fullLocalPath,
+  path.join('F:\\Torrents', 'Scary Movie Extended Cut 2026 1080p WEB-DL HEVC x265 5.1 BONE.mkv')
+);
+
+console.log('✅ Single-file cloud torrent name & destination path resolution passed');
+
+// Test 6: normalizeMagnetResponse for AllDebrid response variations
+console.log('Test 6: normalizeMagnetResponse shape handling');
+import { normalizeMagnetResponse } from '../server/alldebrid.js';
+
+// Case A: Array of magnets
+const resArray = { magnets: [{ id: 686406964, filename: 'Backrooms 2026.mkv', statusCode: 4 }] };
+const normA = normalizeMagnetResponse(resArray, 686406964);
+assert.strictEqual(normA.filename, 'Backrooms 2026.mkv');
+
+// Case B: Single Object magnets
+const resObj = { magnets: { id: 686406964, filename: 'Backrooms 2026.mkv', statusCode: 4 } };
+const normB = normalizeMagnetResponse(resObj, 686406964);
+assert.strictEqual(normB.filename, 'Backrooms 2026.mkv');
+
+// Case C: Keyed Object magnets
+const resKeyed = { magnets: { '686406964': { id: 686406964, filename: 'Backrooms 2026.mkv', statusCode: 4 } } };
+const normC = normalizeMagnetResponse(resKeyed, 686406964);
+assert.strictEqual(normC.filename, 'Backrooms 2026.mkv');
+
+// Case D: Null or invalid
+assert.strictEqual(normalizeMagnetResponse(null), null);
+assert.strictEqual(normalizeMagnetResponse({ magnets: null }), null);
+
+console.log('✅ normalizeMagnetResponse handles all API response shapes cleanly');
 console.log('--- ALL UNIT TESTS PASSED SUCCESSFULLY! ---');
