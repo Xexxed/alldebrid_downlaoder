@@ -11,14 +11,18 @@ import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import multer from 'multer';
 import { exec } from 'child_process';
+import dotenv from 'dotenv';
 
 import { AllDebridClient, parseDownloadInput, flattenFileTree, sanitizePathSegment, normalizeMagnetResponse, fetchRapidgatorFolder } from './alldebrid.js';
 import { isArchiveFile } from './extractor.js';
 import { DownloadEngine } from './downloader.js';
+import { searchAggregator, extractHashFromMagnet } from './search.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
+
+dotenv.config({ path: path.join(ROOT_DIR, '.env') });
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -48,6 +52,8 @@ const upload = multer({
 let apiKey = process.env.ALLDEBRID_API_KEY || '';
 let downloadDir = path.resolve(ROOT_DIR, process.env.DOWNLOAD_DIR || './downloads');
 let maxConcurrent = parseInt(process.env.MAX_CONCURRENT_DOWNLOADS, 10) || 3;
+let jackettUrl = process.env.JACKETT_URL || '';
+let jackettApiKey = process.env.JACKETT_API_KEY || '';
 
 const client = new AllDebridClient(apiKey);
 const engine = new DownloadEngine(client, {
@@ -700,6 +706,76 @@ app.post('/api/cloud-magnets/:id/restart', async (req, res) => {
 });
 
 /**
+ * Multi-Indexer Torrent Search with AllDebrid Instant Cache enrichment
+ */
+app.get('/api/search', async (req, res) => {
+  const query = req.query.q || '';
+  const category = req.query.category || 'all';
+  const onlyCached = req.query.onlyCached === 'true';
+
+  if (!query.trim()) {
+    return res.json({ results: [], total: 0, query: '', instantCount: 0 });
+  }
+
+  try {
+    const searchRes = await searchAggregator(query, {
+      category,
+      onlyCached,
+      alldebridClient: apiKey ? client : null,
+      jackettUrl,
+      jackettApiKey,
+    });
+    res.json(searchRes);
+  } catch (err) {
+    res.status(500).json({ error: err.message, results: [], total: 0 });
+  }
+});
+
+/**
+ * Standalone Batch Magnet & Hash Instant Cache Inspector
+ */
+app.post('/api/magnet/check-cache', async (req, res) => {
+  if (!apiKey) {
+    return res.status(400).json({ error: 'AllDebrid API Key is required for cache checking' });
+  }
+
+  const { magnets } = req.body;
+  if (!magnets) {
+    return res.status(400).json({ error: 'magnets input is required' });
+  }
+
+  let rawList = [];
+  if (Array.isArray(magnets)) {
+    rawList = magnets;
+  } else if (typeof magnets === 'string') {
+    rawList = magnets.split('\n').map((l) => l.trim()).filter(Boolean);
+  }
+
+  const parsedHashesOrMagnets = rawList
+    .map((item) => {
+      const hash = extractHashFromMagnet(item);
+      return hash || item.trim();
+    })
+    .filter(Boolean);
+
+  if (parsedHashesOrMagnets.length === 0) {
+    return res.json({ success: true, total: 0, results: [] });
+  }
+
+  try {
+    const cacheResults = await client.checkInstantAvailability(parsedHashesOrMagnets);
+    res.json({
+      success: true,
+      total: cacheResults.length,
+      instantCount: cacheResults.filter((r) => r.ready).length,
+      results: cacheResults,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * Get Settings
  */
 app.get('/api/settings', (req, res) => {
@@ -708,6 +784,9 @@ app.get('/api/settings', (req, res) => {
     hasApiKey: !!apiKey,
     downloadDir,
     maxConcurrent,
+    jackettUrl,
+    jackettApiKey: jackettApiKey ? `${jackettApiKey.slice(0, 4)}...` : '',
+    hasJackett: !!(jackettUrl && jackettApiKey),
   });
 });
 
@@ -715,7 +794,7 @@ app.get('/api/settings', (req, res) => {
  * Update Settings & write to .env
  */
 app.post('/api/settings', async (req, res) => {
-  const { newApiKey, newDownloadDir, newMaxConcurrent } = req.body;
+  const { newApiKey, newDownloadDir, newMaxConcurrent, newJackettUrl, newJackettApiKey } = req.body;
 
   if (newApiKey !== undefined && newApiKey.trim() !== '') {
     apiKey = newApiKey.trim();
@@ -732,6 +811,14 @@ app.post('/api/settings', async (req, res) => {
     engine.setMaxConcurrent(maxConcurrent);
   }
 
+  if (newJackettUrl !== undefined) {
+    jackettUrl = newJackettUrl.trim();
+  }
+
+  if (newJackettApiKey !== undefined && newJackettApiKey.trim() !== '') {
+    jackettApiKey = newJackettApiKey.trim();
+  }
+
   // Update .env file
   try {
     const envContent = `# AllDebrid API Key (Generate one from https://alldebrid.com/apikeys)
@@ -743,6 +830,10 @@ PORT=${PORT}
 # Download Settings
 DOWNLOAD_DIR=${downloadDir}
 MAX_CONCURRENT_DOWNLOADS=${maxConcurrent}
+
+# Optional Jackett / Prowlarr Integration
+JACKETT_URL=${jackettUrl}
+JACKETT_API_KEY=${jackettApiKey}
 `;
     fs.writeFileSync(path.join(ROOT_DIR, '.env'), envContent, 'utf-8');
   } catch (err) {
@@ -755,6 +846,8 @@ MAX_CONCURRENT_DOWNLOADS=${maxConcurrent}
       hasApiKey: !!apiKey,
       downloadDir,
       maxConcurrent,
+      jackettUrl,
+      hasJackett: !!(jackettUrl && jackettApiKey),
     },
   });
 });

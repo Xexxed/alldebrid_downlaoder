@@ -87,6 +87,23 @@ export class AllDebridClient {
   }
 
   /**
+   * Check instant cloud availability for magnet URIs or 40-char infohashes
+   * @param {string|string[]} magnets
+   * @returns {Promise<Array<{ magnet: string, hash: string, name: string, size: number, ready: boolean, id?: number }>>}
+   */
+  async checkInstantAvailability(magnets) {
+    const list = Array.isArray(magnets) ? magnets : [magnets];
+    if (list.length === 0) return [];
+    try {
+      const res = await this.uploadMagnet(list);
+      return res?.magnets || [];
+    } catch (err) {
+      console.error('AllDebrid instant check error:', err.message);
+      return [];
+    }
+  }
+
+  /**
    * Upload .torrent file
    * @param {Buffer} fileBuffer
    * @param {string} fileName

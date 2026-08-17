@@ -96,6 +96,15 @@
           <span class="tab-badge" id="cloudCount">0</span>
         </button>
 
+        <button class="nav-tab" data-tab="search">
+          <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <span>Discover &amp; Search</span>
+          <span class="tab-badge" id="searchInstantBadge" style="display:none;background:rgba(0,255,102,0.15);color:var(--accent-success);border-color:rgba(0,255,102,0.4)">⚡ 0</span>
+        </button>
+
         <button class="nav-tab" data-tab="settings">
           <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
@@ -213,6 +222,83 @@
         </div>
       </section>
 
+      <!-- Discover & Search Tab -->
+      <section class="tab-content" id="tab-search">
+        <div class="hpc-toolbar search-toolbar-main">
+          <div class="search-input-wrap">
+            <svg class="search-box-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input type="text" id="torrentSearchInput" class="hpc-input mono search-primary-input" placeholder="Search releases across YTS, EZTV, Nyaa, PirateBay... (e.g. Inception, Ubuntu, Jujutsu)" />
+            <button class="btn btn-primary" id="triggerSearchBtn">
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span>SEARCH</span>
+            </button>
+          </div>
+
+          <div class="search-actions-bar">
+            <button class="btn btn-secondary" id="openBatchCacheModalBtn" title="Inspect multiple magnet links or hashes at once">
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+              <span>BATCH CACHE CHECKER</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter bar: Category pills & Only Cached Toggle -->
+        <div class="search-filter-strip">
+          <div class="category-pills" id="searchCategoryPills">
+            <button class="cat-pill active" data-cat="all">ALL CATEGORIES</button>
+            <button class="cat-pill" data-cat="movies">🎬 MOVIES</button>
+            <button class="cat-pill" data-cat="tv">📺 TV SHOWS</button>
+            <button class="cat-pill" data-cat="anime">🌸 ANIME</button>
+            <button class="cat-pill" data-cat="games">🎮 GAMES &amp; APPS</button>
+          </div>
+
+          <label class="instant-cache-filter-toggle">
+            <input type="checkbox" id="onlyCachedCheckbox" />
+            <span class="toggle-track"></span>
+            <span class="toggle-label mono">ONLY INSTANT CACHED ⚡</span>
+          </label>
+        </div>
+
+        <!-- Search Status / Summary -->
+        <div class="search-meta-bar" id="searchMetaBar" style="display:none;">
+          <div class="search-stat-item">
+            <span class="meta-label">RESULTS FOUND:</span>
+            <span class="meta-val highlight" id="searchResultTotal">0</span>
+          </div>
+          <div class="search-stat-item">
+            <span class="meta-label">INSTANT CLOUD READY:</span>
+            <span class="meta-val instant-green" id="searchResultInstant">0</span>
+          </div>
+        </div>
+
+        <!-- Results Grid -->
+        <div class="search-results-grid" id="searchResultsContainer">
+          <div class="empty-state">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <div class="empty-title">RELEASE AGGREGATOR READY</div>
+            <div class="empty-desc">Enter any movie, TV series, anime, game, or software to search across indexers with real-time AllDebrid cloud cache detection.</div>
+          </div>
+        </div>
+
+        <!-- Search Loading Skeleton -->
+        <div class="search-skeleton-grid" id="searchSkeleton" style="display:none;">
+          <div class="skeleton-card"><div class="shimmer-line"></div><div class="shimmer-line bar"></div></div>
+          <div class="skeleton-card"><div class="shimmer-line"></div><div class="shimmer-line bar"></div></div>
+          <div class="skeleton-card"><div class="shimmer-line"></div><div class="shimmer-line bar"></div></div>
+        </div>
+      </section>
+
       <!-- Settings Tab -->
       <section class="tab-content" id="tab-settings">
         <div class="hpc-card settings-card">
@@ -275,6 +361,22 @@
                 <input type="range" id="maxConcurrentRange" min="1" max="10" value="3" class="hpc-range" />
               </div>
               <span class="field-help mono">Recommendation: Set to 1-2 for mechanical USB HDDs to maximize sequential throughput; 3-5 for SSDs.</span>
+            </div>
+
+            <!-- Optional Jackett / Prowlarr Integration -->
+            <div class="form-group">
+              <label for="jackettUrlInput" class="hpc-label">
+                <span>JACKETT / PROWLARR SERVER URL (OPTIONAL)</span>
+              </label>
+              <input type="text" id="jackettUrlInput" class="hpc-input mono" placeholder="e.g. http://localhost:9117" />
+              <span class="field-help mono">Query your personal private &amp; configured trackers through your local Jackett/Prowlarr instance.</span>
+            </div>
+
+            <div class="form-group">
+              <label for="jackettApiKeyInput" class="hpc-label">
+                <span>JACKETT / PROWLARR API KEY</span>
+              </label>
+              <input type="password" id="jackettApiKeyInput" class="hpc-input mono" placeholder="Paste Jackett API key..." />
             </div>
 
             <div class="settings-actions">
@@ -538,6 +640,62 @@
           </svg>
           <span>OPEN IN FILE EXPLORER</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Batch Magnet Cache Checker -->
+  <div class="modal-backdrop" id="batchCacheModal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-tag mono">CACHE PRE-FLIGHT</div>
+          <h3>BATCH MAGNET CACHE INSPECTOR</h3>
+        </div>
+        <button class="btn-close" id="closeBatchCacheModalBtn" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <label class="hpc-label" for="batchCacheTextarea">
+          <span>PASTE MAGNET URIS OR 40-CHAR INFOHASHES (ONE PER LINE)</span>
+        </label>
+        <textarea id="batchCacheTextarea" class="hpc-textarea mono" rows="5" placeholder="magnet:?xt=urn:btih:...&#10;842783e3005495d5d1637f5364b59343c7844707&#10;..."></textarea>
+
+        <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center;">
+          <div class="field-help mono" id="batchCacheSummaryText">Paste up to 50 links/hashes to inspect cloud availability in real-time.</div>
+          <button class="btn btn-primary" id="runBatchCacheCheckBtn">
+            <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+            <span>INSPECT CLOUD AVAILABILITY</span>
+          </button>
+        </div>
+
+        <div id="batchCacheResultsContainer" style="margin-top: 20px; display: none;">
+          <div class="modal-tag mono" style="margin-bottom: 8px;">INSPECTION TELEMETRY</div>
+          <div class="batch-cache-table-wrap">
+            <table class="batch-cache-table" id="batchCacheTable">
+              <thead>
+                <tr>
+                  <th style="width:140px;">AVAILABILITY</th>
+                  <th>RELEASE NAME / HASH</th>
+                  <th style="width:100px;">SIZE</th>
+                  <th style="width:180px; text-align:right;">ACTION</th>
+                </tr>
+              </thead>
+              <tbody id="batchCacheTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="closeBatchCacheModalBottomBtn">CLOSE</button>
       </div>
     </div>
   </div>

@@ -23,6 +23,11 @@ const state = {
   browserCurrentPath: '',
   browserParentPath: null,
   onFolderSelectedCallback: null,
+  // Search & Discover State
+  searchQuery: '',
+  searchCategory: 'all',
+  searchResults: [],
+  isSearching: false,
 };
 
 // DOM Elements
@@ -105,7 +110,30 @@ const elements = {
   browseDownloadDirBtn: document.getElementById('browseDownloadDirBtn'),
   maxConcurrentRange: document.getElementById('maxConcurrentRange'),
   maxConcurrentVal: document.getElementById('maxConcurrentVal'),
+  jackettUrlInput: document.getElementById('jackettUrlInput'),
+  jackettApiKeyInput: document.getElementById('jackettApiKeyInput'),
   testApiBtn: document.getElementById('testApiBtn'),
+  // Search & Discover
+  torrentSearchInput: document.getElementById('torrentSearchInput'),
+  triggerSearchBtn: document.getElementById('triggerSearchBtn'),
+  searchCategoryPills: document.getElementById('searchCategoryPills'),
+  onlyCachedCheckbox: document.getElementById('onlyCachedCheckbox'),
+  searchMetaBar: document.getElementById('searchMetaBar'),
+  searchResultTotal: document.getElementById('searchResultTotal'),
+  searchResultInstant: document.getElementById('searchResultInstant'),
+  searchResultsContainer: document.getElementById('searchResultsContainer'),
+  searchSkeleton: document.getElementById('searchSkeleton'),
+  searchInstantBadge: document.getElementById('searchInstantBadge'),
+  // Batch Cache Checker Modal
+  openBatchCacheModalBtn: document.getElementById('openBatchCacheModalBtn'),
+  batchCacheModal: document.getElementById('batchCacheModal'),
+  closeBatchCacheModalBtn: document.getElementById('closeBatchCacheModalBtn'),
+  closeBatchCacheModalBottomBtn: document.getElementById('closeBatchCacheModalBottomBtn'),
+  batchCacheTextarea: document.getElementById('batchCacheTextarea'),
+  runBatchCacheCheckBtn: document.getElementById('runBatchCacheCheckBtn'),
+  batchCacheResultsContainer: document.getElementById('batchCacheResultsContainer'),
+  batchCacheTbody: document.getElementById('batchCacheTbody'),
+  batchCacheSummaryText: document.getElementById('batchCacheSummaryText'),
   // Toast
   toastContainer: document.getElementById('toastContainer'),
 };
@@ -291,6 +319,13 @@ async function fetchStatus() {
     elements.downloadDirInput.value = data.downloadDir || '';
     elements.maxConcurrentRange.value = data.maxConcurrent || 3;
     elements.maxConcurrentVal.textContent = `${data.maxConcurrent || 3} WORKERS`;
+
+    // Fetch extended settings (Jackett)
+    const setRes = await fetch('/api/settings');
+    const setData = await setRes.json();
+    if (setData.jackettUrl && elements.jackettUrlInput) {
+      elements.jackettUrlInput.value = setData.jackettUrl;
+    }
   } catch (err) {
     console.error('Failed to fetch status:', err);
   }
@@ -1243,6 +1278,8 @@ elements.settingsForm.onsubmit = async (e) => {
     newApiKey: elements.apiKeyInput.value.trim(),
     newDownloadDir: elements.downloadDirInput.value.trim(),
     newMaxConcurrent: parseInt(elements.maxConcurrentRange.value, 10),
+    newJackettUrl: elements.jackettUrlInput ? elements.jackettUrlInput.value.trim() : '',
+    newJackettApiKey: elements.jackettApiKeyInput ? elements.jackettApiKeyInput.value.trim() : '',
   };
 
   try {
@@ -1292,6 +1329,320 @@ elements.testApiBtn.onclick = async () => {
     elements.testApiBtn.textContent = 'VERIFY CREDENTIALS';
   }
 };
+
+// ============================================================
+// Release Discovery & Torrent Search Controller
+// ============================================================
+
+async function performSearch() {
+  const query = elements.torrentSearchInput.value.trim();
+  if (!query) {
+    elements.searchResultsContainer.innerHTML = `
+      <div class="empty-state">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <div class="empty-title">RELEASE AGGREGATOR READY</div>
+        <div class="empty-desc">Enter any movie, TV series, anime, game, or software to search across indexers with real-time AllDebrid cloud cache detection.</div>
+      </div>
+    `;
+    elements.searchMetaBar.style.display = 'none';
+    return;
+  }
+
+  state.isSearching = true;
+  state.searchQuery = query;
+  elements.searchSkeleton.style.display = 'flex';
+  elements.searchResultsContainer.innerHTML = '';
+  elements.searchMetaBar.style.display = 'none';
+  elements.triggerSearchBtn.disabled = true;
+  elements.triggerSearchBtn.textContent = 'SEARCHING...';
+
+  const category = state.searchCategory || 'all';
+  const onlyCached = elements.onlyCachedCheckbox?.checked || false;
+
+  try {
+    const url = `/api/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}&onlyCached=${onlyCached}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    state.searchResults = data.results || [];
+    renderSearchResults(state.searchResults);
+
+    // Update Meta & Badge
+    elements.searchMetaBar.style.display = 'flex';
+    elements.searchResultTotal.textContent = data.total || 0;
+    elements.searchResultInstant.textContent = data.instantCount || 0;
+
+    if (data.instantCount > 0) {
+      elements.searchInstantBadge.style.display = 'inline-flex';
+      elements.searchInstantBadge.textContent = `⚡ ${data.instantCount}`;
+    } else {
+      elements.searchInstantBadge.style.display = 'none';
+    }
+  } catch (err) {
+    elements.searchResultsContainer.innerHTML = `
+      <div class="empty-state">
+        <div style="color:var(--accent-primary);font-weight:700;margin-bottom:6px;">SEARCH QUERY FAILED</div>
+        <p style="color:var(--text-muted);font-size:12px;">${err.message}</p>
+      </div>
+    `;
+  } finally {
+    state.isSearching = false;
+    elements.searchSkeleton.style.display = 'none';
+    elements.triggerSearchBtn.disabled = false;
+    elements.triggerSearchBtn.innerHTML = `
+      <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <span>SEARCH</span>
+    `;
+  }
+}
+
+function renderSearchResults(results) {
+  if (!results || results.length === 0) {
+    elements.searchResultsContainer.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-title">NO RELEASES MATCHING QUERY</div>
+        <div class="empty-desc">Try modifying your search terms or unchecking the "Only Instant Cached" filter.</div>
+      </div>
+    `;
+    return;
+  }
+
+  elements.searchResultsContainer.innerHTML = results
+    .map((r) => {
+      const isInstant = r.instant === true || r.alldebridReady === true;
+      const sizeStr = r.sizeStr || formatBytes(r.size);
+      const encodedMagnet = encodeURIComponent(r.magnet || '');
+      const encodedTitle = encodeURIComponent(r.title || '');
+
+      const posterImg = r.poster
+        ? `<img class="search-card-thumb" src="${r.poster}" alt="Poster" onerror="this.style.display='none'" />`
+        : `<div class="search-card-icon">${ICONS.video}</div>`;
+
+      return `
+        <div class="search-result-card ${isInstant ? 'is-instant' : ''}">
+          <div class="search-card-main">
+            ${posterImg}
+            <div class="search-card-info">
+              <div class="search-card-title" title="${r.title}">${r.title}</div>
+              <div class="search-card-meta">
+                ${isInstant ? `<span class="badge-instant-cached">⚡ INSTANT CLOUD READY</span>` : `<span class="badge-p2p-needed">⏳ SEEDING REQUIRED</span>`}
+                <span class="category-tag">${r.category || 'General'}</span>
+                <span class="indexer-badge">${r.indexer || 'Torrent'}</span>
+                <span class="telemetry-badge">${sizeStr}</span>
+                <span class="telemetry-badge" style="color:var(--accent-success);border-color:rgba(0,255,102,0.3)">🟢 ${r.seeders || 0} SEEDS</span>
+                <span class="telemetry-badge" style="color:var(--text-muted);">🔴 ${r.leechers || 0} PEERS</span>
+                ${r.year ? `<span class="telemetry-badge">${r.year}</span>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div class="search-card-actions">
+            <button class="btn btn-primary btn-sm" onclick="dispatchSearchDownload(decodeURIComponent('${encodedMagnet}'), decodeURIComponent('${encodedTitle}'))" title="Download directly to disk">
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>DOWNLOAD</span>
+            </button>
+
+            <button class="btn btn-secondary btn-sm" onclick="saveSearchToCloud(decodeURIComponent('${encodedMagnet}'), decodeURIComponent('${encodedTitle}'))" title="Save to AllDebrid Cloud">
+              <span class="btn-svg">${ICONS.cloud}</span>
+              <span>CLOUD</span>
+            </button>
+
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="copyMagnetLink(decodeURIComponent('${encodedMagnet}'))" title="Copy Magnet URI">
+              <span class="btn-svg">${ICONS.link}</span>
+            </button>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+window.dispatchSearchDownload = async function (magnetUri, title) {
+  if (!magnetUri) {
+    showToast('No magnet URI available for this release', 'error');
+    return;
+  }
+
+  showToast(`Inspecting topology for "${title || 'Release'}"...`, 'info');
+
+  try {
+    const res = await fetch('/api/downloads/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: magnetUri }),
+    });
+
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.previews || data.previews.length === 0) {
+      throw new Error(data.errors?.[0] || 'Unable to resolve magnet structure');
+    }
+
+    openDownloadReview(data.previews);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+};
+
+window.saveSearchToCloud = async function (magnetUri, title) {
+  if (!magnetUri) return;
+  try {
+    const res = await fetch('/api/downloads/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: magnetUri }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(`Saved "${title || 'Release'}" to AllDebrid Cloud cache!`, 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+};
+
+window.copyMagnetLink = async function (magnetUri) {
+  if (!magnetUri) return;
+  try {
+    await navigator.clipboard.writeText(magnetUri);
+    showToast('Magnet link copied to clipboard!', 'success');
+  } catch {
+    showToast('Failed to copy magnet link', 'error');
+  }
+};
+
+// Search listeners
+if (elements.triggerSearchBtn) {
+  elements.triggerSearchBtn.onclick = performSearch;
+}
+
+if (elements.torrentSearchInput) {
+  elements.torrentSearchInput.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      performSearch();
+    }
+  };
+}
+
+if (elements.onlyCachedCheckbox) {
+  elements.onlyCachedCheckbox.onchange = performSearch;
+}
+
+// Category pills
+if (elements.searchCategoryPills) {
+  elements.searchCategoryPills.querySelectorAll('.cat-pill').forEach((btn) => {
+    btn.onclick = () => {
+      elements.searchCategoryPills.querySelectorAll('.cat-pill').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.searchCategory = btn.dataset.cat;
+      if (elements.torrentSearchInput.value.trim()) {
+        performSearch();
+      }
+    };
+  });
+}
+
+// ============================================================
+// Batch Cache Checker Controller
+// ============================================================
+
+function openBatchCacheModal() {
+  elements.batchCacheModal.classList.add('active');
+  elements.batchCacheTextarea.focus();
+}
+
+function closeBatchCacheModal() {
+  elements.batchCacheModal.classList.remove('active');
+}
+
+if (elements.openBatchCacheModalBtn) {
+  elements.openBatchCacheModalBtn.onclick = openBatchCacheModal;
+}
+if (elements.closeBatchCacheModalBtn) {
+  elements.closeBatchCacheModalBtn.onclick = closeBatchCacheModal;
+}
+if (elements.closeBatchCacheModalBottomBtn) {
+  elements.closeBatchCacheModalBottomBtn.onclick = closeBatchCacheModal;
+}
+
+if (elements.runBatchCacheCheckBtn) {
+  elements.runBatchCacheCheckBtn.onclick = async () => {
+    const text = elements.batchCacheTextarea.value.trim();
+    if (!text) {
+      showToast('Paste at least one magnet URI or 40-char hash', 'error');
+      return;
+    }
+
+    elements.runBatchCacheCheckBtn.disabled = true;
+    elements.runBatchCacheCheckBtn.textContent = 'QUERYING CLOUD CACHE...';
+
+    try {
+      const res = await fetch('/api/magnet/check-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ magnets: text }),
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      const list = data.results || [];
+      elements.batchCacheSummaryText.innerHTML = `Found <strong style="color:var(--text-primary);">${list.length}</strong> items • <strong style="color:var(--accent-success);">${data.instantCount || 0}</strong> 100% Instant Ready`;
+
+      if (list.length === 0) {
+        elements.batchCacheTbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:18px;">No valid magnets detected.</td></tr>`;
+      } else {
+        elements.batchCacheTbody.innerHTML = list
+          .map((item) => {
+            const isReady = item.ready === true;
+            const statusBadge = isReady
+              ? `<span class="badge-instant-cached">⚡ 100% CACHED</span>`
+              : `<span class="badge-p2p-needed">⏳ SEEDING</span>`;
+            const sizeText = item.size ? formatBytes(item.size) : 'Unknown';
+            const nameText = item.name || item.hash || item.magnet || 'Unknown';
+            const encodedMag = encodeURIComponent(item.magnet || item.hash || '');
+            const encodedName = encodeURIComponent(item.name || '');
+
+            return `
+              <tr>
+                <td>${statusBadge}</td>
+                <td class="mono" style="font-size:12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${nameText}">${nameText}</td>
+                <td class="mono" style="font-size:12px;">${sizeText}</td>
+                <td style="text-align:right;">
+                  <button class="btn btn-primary btn-sm" onclick="dispatchSearchDownload(decodeURIComponent('${encodedMag}'), decodeURIComponent('${encodedName}')); closeBatchCacheModal();">
+                    <span>DOWNLOAD</span>
+                  </button>
+                </td>
+              </tr>
+            `;
+          })
+          .join('');
+      }
+
+      elements.batchCacheResultsContainer.style.display = 'block';
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      elements.runBatchCacheCheckBtn.disabled = false;
+      elements.runBatchCacheCheckBtn.innerHTML = `
+        <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+        <span>INSPECT CLOUD AVAILABILITY</span>
+      `;
+    }
+  };
+}
 
 // Search Filter Listeners
 elements.activeSearchInput.oninput = renderTasks;

@@ -35,6 +35,13 @@ A modern, full-featured, and self-hosted torrent, file hoster, and cloud downloa
 * **Part File Cleanup (Space Saver)**: Optionally deletes source `.part*.rar` / `.zip` archive parts after successful decompression to reclaim storage.
 * **Manual Trigger**: Extract any completed download anytime with a single click.
 
+### 🔍 Discovery & Search Aggregator (New!)
+* **Multi-Indexer Search**: Concurrently query releases across **ThePirateBay (APIBay)**, **YTS (HD Movies)**, **EZTV (TV Series)**, and **Nyaa (Anime)**.
+* **Instant Cloud Cache Badging**: Cross-references every search result with AllDebrid's servers in real-time, displaying a glowing `[ ⚡ INSTANT CLOUD READY ]` badge for releases that download immediately at maximum CDN line speed.
+* **1-Click Actions**: One-click download to disk (with directory inspector), direct cloud save, or magnet copy.
+* **Batch Magnet Inspector**: Inspect up to 50 raw magnet links or 40-character infohashes simultaneously to check cloud availability before downloading.
+* **Jackett / Prowlarr Support**: Connect private indexers and custom trackers through local Jackett/Prowlarr instances.
+
 ### ⚡ High-Performance Computing (HPC) Architecture
 * **Stream-Based Range Resuming**: HTTP `Range` request resuming prevents redownloading upon interruptions.
 * **Mechanical Drive Protection**: Tuned backpressure buffers (512KB chunks) for smooth sequential writes on external USB HDDs and fast SSDs.
@@ -184,9 +191,11 @@ http://localhost:3000
 | `GET` | `/api/cloud-magnets` | List torrents cached in AllDebrid cloud storage. |
 | `POST` | `/api/cloud-magnets/:id/download` | Queue a cloud torrent directly to local disk. |
 | `POST` | `/api/cloud-magnets/:id/delete` | Delete a torrent from AllDebrid cloud account. |
+| `GET` | `/api/search` | Multi-indexer release search with AllDebrid instant cache telemetry. |
+| `POST` | `/api/magnet/check-cache` | Batch inspect magnet links and infohashes for cloud availability. |
 | `GET` | `/api/browse-directory` | Browse local filesystem directories. |
 | `POST` | `/api/create-directory` | Create a new local directory. |
-| `GET` | `/api/settings` | Read current engine settings. |
+| `GET` | `/api/settings` | Read current engine settings (workers, paths, Jackett). |
 | `POST` | `/api/settings` | Update settings and persist to `.env`. |
 
 ---
