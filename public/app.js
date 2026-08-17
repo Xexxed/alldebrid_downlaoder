@@ -75,6 +75,10 @@ const elements = {
   selectAllReviewFilesBtn: document.getElementById('selectAllReviewFilesBtn'),
   deselectAllReviewFilesBtn: document.getElementById('deselectAllReviewFilesBtn'),
   reviewTreeContainer: document.getElementById('reviewTreeContainer'),
+  reviewAutoExtractCheckbox: document.getElementById('reviewAutoExtractCheckbox'),
+  reviewDeletePartsCheckbox: document.getElementById('reviewDeletePartsCheckbox'),
+  archiveOptionsCard: document.getElementById('archiveOptionsCard'),
+  deletePartsCard: document.getElementById('deletePartsCard'),
   // Folder Browser Modal
   folderBrowserModal: document.getElementById('folderBrowserModal'),
   closeFolderBrowserBtn: document.getElementById('closeFolderBrowserBtn'),
@@ -378,11 +382,13 @@ function createTaskCardHtml(task) {
   const isPaused = task.status === 'paused';
   const isError = task.status === 'error';
   const isWaitingCloud = task.status === 'waiting_cloud';
+  const isExtracting = task.status === 'extracting' || task.isExtracting;
 
   let statusText = task.status.toUpperCase().replace(/_/g, ' ');
   if (isWaitingCloud) statusText = `CLOUD SYNC (${task.cloudProgress || 0}%)`;
+  if (isExtracting) statusText = `EXTRACTING ARCHIVE...`;
 
-  const typeIcon = task.type === 'torrent' ? ICONS.folder : ICONS.link;
+  const typeIcon = task.type === 'torrent' ? ICONS.folder : task.type === 'folder' ? ICONS.folder : ICONS.link;
 
   return `
     <div class="task-card" data-task-id="${task.id}">
@@ -392,8 +398,11 @@ function createTaskCardHtml(task) {
           <div>
             <div class="task-name" title="${task.name}">${task.name}</div>
             <div class="task-meta-pills" style="margin-top: 6px;">
-              <span class="telemetry-badge">${task.files?.length || 1} FILES PRESERVED</span>
+              <span class="telemetry-badge">${task.files?.length || task.fileCount || 1} FILES</span>
               <span class="telemetry-badge">${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}</span>
+              ${task.autoExtract && !task.extracted && !isCompleted ? `<span class="telemetry-badge" style="color:var(--accent-electric);border-color:rgba(0,191,255,0.4)">⚡ AUTO-EXTRACT</span>` : ''}
+              ${task.extracted ? `<span class="telemetry-badge" style="color:var(--accent-success);border-color:rgba(0,255,102,0.4)">✓ EXTRACTED</span>` : ''}
+              ${task.extractionError ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)">EXTRACTION: ${task.extractionError}</span>` : ''}
               ${task.error ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)">${task.error}</span>` : ''}
             </div>
           </div>
@@ -405,7 +414,7 @@ function createTaskCardHtml(task) {
 
       <div class="task-progress-box">
         <div class="hpc-progress-track">
-          <div class="hpc-progress-fill ${isDownloading ? 'active-stream' : ''}" 
+          <div class="hpc-progress-fill ${isDownloading || isExtracting ? 'active-stream' : ''}" 
                style="width: ${task.progress || 0}%;"></div>
         </div>
         <div class="task-metrics-row">
@@ -426,9 +435,14 @@ function createTaskCardHtml(task) {
                 <span class="metric-val">${formatEta(task.eta)}</span>
               </div>
             ` : ''}
-            ${isCompleted ? `
+            ${isExtracting ? `
+              <div class="metric-item highlight" style="color:var(--accent-electric)">
+                ⚡ DECOMPRESSING ARCHIVE FILES...
+              </div>
+            ` : ''}
+            ${isCompleted && !isExtracting ? `
               <div class="metric-item" style="color:var(--accent-success)">
-                ✓ ON-DISK VERIFIED
+                ✓ ON-DISK VERIFIED ${task.extracted ? '• EXTRACTED' : ''}
               </div>
             ` : ''}
           </div>
@@ -445,6 +459,13 @@ function createTaskCardHtml(task) {
           <button class="btn btn-secondary btn-sm" onclick="openLocalFolder('${task.id}')" title="Open directory in File Explorer">
             <span class="btn-svg">${ICONS.drive}</span>
             <span>OPEN FOLDER</span>
+          </button>
+        ` : ''}
+
+        ${isCompleted && !task.extracted ? `
+          <button class="btn btn-secondary btn-sm" onclick="manualExtractTask('${task.id}')" title="Extract archives in this folder">
+            <span class="btn-svg">${ICONS.archive}</span>
+            <span>EXTRACT</span>
           </button>
         ` : ''}
 
@@ -540,6 +561,18 @@ window.openLocalFolder = async function (taskId) {
     showToast('Opened destination directory in File Explorer', 'success');
   } catch (err) {
     showToast(err.message, 'error');
+  }
+};
+
+window.manualExtractTask = async function (taskId) {
+  try {
+    showToast('Initiating archive extraction...', 'info');
+    const res = await fetch(`/api/downloads/${taskId}/extract`, { method: 'POST' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(data.result?.message || 'Archive extracted successfully!', 'success');
+  } catch (err) {
+    showToast(`Extraction failed: ${err.message}`, 'error');
   }
 };
 
@@ -881,6 +914,32 @@ function openDownloadReview(previews) {
 
   elements.reviewOutputDirInput.value = primaryItem.defaultOutputDir;
 
+  // Detect if archives exist in the preview files
+  const hasArchiveFiles = !!primaryItem.hasArchives || (primaryItem.flattenedFiles && primaryItem.flattenedFiles.some((f) => /\.(rar|zip|7z|tar|gz|r\d{2}|part\d+\.rar)$/i.test(f.name)));
+
+  if (elements.reviewAutoExtractCheckbox) {
+    elements.reviewAutoExtractCheckbox.checked = hasArchiveFiles;
+  }
+
+  if (elements.reviewDeletePartsCheckbox) {
+    elements.reviewDeletePartsCheckbox.checked = false;
+    elements.reviewDeletePartsCheckbox.disabled = !hasArchiveFiles;
+    if (elements.deletePartsCard) {
+      elements.deletePartsCard.style.opacity = hasArchiveFiles ? '1' : '0.4';
+    }
+  }
+
+  if (elements.reviewAutoExtractCheckbox && elements.reviewDeletePartsCheckbox) {
+    elements.reviewAutoExtractCheckbox.onchange = () => {
+      const enabled = elements.reviewAutoExtractCheckbox.checked;
+      elements.reviewDeletePartsCheckbox.disabled = !enabled;
+      if (!enabled) elements.reviewDeletePartsCheckbox.checked = false;
+      if (elements.deletePartsCard) {
+        elements.deletePartsCard.style.opacity = enabled ? '1' : '0.4';
+      }
+    };
+  }
+
   // Initialize selected files (skip already complete files by default if desired or include uncompleted)
   if (primaryItem.flattenedFiles) {
     primaryItem.flattenedFiles.forEach((f) => {
@@ -997,6 +1056,9 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
     return;
   }
 
+  const autoExtract = elements.reviewAutoExtractCheckbox ? elements.reviewAutoExtractCheckbox.checked : false;
+  const deleteArchiveAfterExtract = elements.reviewDeletePartsCheckbox ? (autoExtract && elements.reviewDeletePartsCheckbox.checked) : false;
+
   elements.confirmReviewDownloadBtn.disabled = true;
   elements.confirmReviewDownloadBtn.textContent = 'DISPATCHING PIPELINE...';
 
@@ -1006,8 +1068,11 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
     url: p.url,
     name: p.name,
     filesTree: p.filesTree,
+    files: p.flattenedFiles,
     customOutputDir: chosenOutputDir,
     selectedFiles: selectedList.length > 0 ? selectedList : null,
+    autoExtract,
+    deleteArchiveAfterExtract,
   }));
 
   try {

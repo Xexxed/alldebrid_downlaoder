@@ -402,6 +402,34 @@
             </div>
             <span class="field-help mono">Preserves all subdirectories below directly into this directory without repeating root folders.</span>
           </div>
+
+          <!-- Archive Auto-Extraction & Cleanup Options -->
+          <div class="review-options-card" id="archiveOptionsCard">
+            <div class="hpc-label"><span>ARCHIVE &amp; PART FILE AUTOMATION</span></div>
+            <div class="extraction-options-grid">
+              <label class="hpc-checkbox-card" id="autoExtractCard">
+                <input type="checkbox" id="reviewAutoExtractCheckbox" checked />
+                <div class="chk-content">
+                  <div class="chk-title-row">
+                    <span class="chk-title mono">AUTO-EXTRACT ARCHIVE(S)</span>
+                    <span class="telemetry-badge" style="font-size:9px;padding:2px 6px;">7-ZIP / UNRAR</span>
+                  </div>
+                  <div class="chk-desc mono">Automatically extract .rar, .part1.rar, .zip, .7z archives once all files finish downloading.</div>
+                </div>
+              </label>
+
+              <label class="hpc-checkbox-card" id="deletePartsCard">
+                <input type="checkbox" id="reviewDeletePartsCheckbox" />
+                <div class="chk-content">
+                  <div class="chk-title-row">
+                    <span class="chk-title mono">DELETE PART FILES AFTER EXTRACTION</span>
+                    <span class="telemetry-badge" style="font-size:9px;padding:2px 6px;color:var(--accent-primary);">SPACE SAVER</span>
+                  </div>
+                  <div class="chk-desc mono">Safely remove .part*.rar / .r00 / .zip archive parts after successful decompression.</div>
+                </div>
+              </label>
+            </div>
+          </div>
         </div>
 
         <div class="review-tree-header">

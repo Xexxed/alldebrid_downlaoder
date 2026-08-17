@@ -262,11 +262,160 @@ export function flattenFileTree(entries, currentPath = '', isRoot = true) {
 }
 
 /**
+ * Converts human readable size string (e.g. "995 MB", "1.2 GB") to bytes
+ */
+export function parseHumanBytes(sizeStr) {
+  if (!sizeStr || typeof sizeStr !== 'string') return 0;
+  const match = sizeStr.trim().match(/^([\d.,]+)\s*([a-zA-Z]+)?$/);
+  if (!match) return 0;
+  const num = parseFloat(match[1].replace(/,/g, ''));
+  if (isNaN(num)) return 0;
+  const unit = (match[2] || 'B').toUpperCase();
+  const k = 1024;
+  if (unit.startsWith('K')) return Math.round(num * k);
+  if (unit.startsWith('M')) return Math.round(num * k * k);
+  if (unit.startsWith('G')) return Math.round(num * k * k * k);
+  if (unit.startsWith('T')) return Math.round(num * k * k * k * k);
+  return Math.round(num);
+}
+
+/**
+ * Scrapes a Rapidgator folder URL, fetching all pages and extracting all contained file links
+ * @param {string} folderUrl
+ * @returns {Promise<{ folderName: string, files: Array<{ name: string, relativePath: string, link: string, size: number, sizeStr: string }>, totalSize: number }>}
+ */
+export async function fetchRapidgatorFolder(folderUrl) {
+  const cleanUrl = folderUrl.split('#')[0];
+  const urlObj = new URL(cleanUrl);
+  const baseDomain = urlObj.origin;
+
+  let currentUrl = cleanUrl;
+  const visitedUrls = new Set();
+  const fileMap = new Map(); // link -> { name, relativePath, link, size, sizeStr }
+  let resolvedFolderName = '';
+  let maxPages = 30; // Protect against infinite loops
+
+  while (currentUrl && maxPages-- > 0 && !visitedUrls.has(currentUrl)) {
+    visitedUrls.add(currentUrl);
+
+    const res = await fetch(currentUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': folderUrl,
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch Rapidgator folder (HTTP ${res.status}): ${res.statusText}`);
+    }
+
+    const html = await res.text();
+
+    // Extract folder name if not yet resolved
+    if (!resolvedFolderName) {
+      const headerMatch = html.match(/<div id="table_header"[^>]*>([\s\S]*?)<br/i);
+      const downloadMatch = html.match(/Downloading:\s*<\/strong>\s*([^<]+)/i);
+      const titleMatch = html.match(/<title>Download file\s*([^<]+)<\/title>/i);
+
+      if (headerMatch && headerMatch[1].trim()) {
+        resolvedFolderName = sanitizePathSegment(headerMatch[1].trim());
+      } else if (downloadMatch && downloadMatch[1].trim()) {
+        resolvedFolderName = sanitizePathSegment(downloadMatch[1].trim());
+      } else if (titleMatch && titleMatch[1].trim()) {
+        resolvedFolderName = sanitizePathSegment(titleMatch[1].trim());
+      } else {
+        // Fallback to URL path segment
+        const segments = urlObj.pathname.split('/').filter(Boolean);
+        const lastSeg = segments[segments.length - 1] || 'Rapidgator_Folder';
+        resolvedFolderName = sanitizePathSegment(lastSeg.replace(/\.html$/i, ''));
+      }
+    }
+
+    // Extract file rows from table
+    // Row pattern: <td><a href="(/file/[^"]+)"><img[^>]*>\s*([^<]+)</a></td>\s*<td[^>]*>([^<]+)</td>
+    const rowRegex = /<tr[^>]*>[\s\S]*?<a\s+href=["'](\/file\/[a-zA-Z0-9_-]+\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<td[^>]*class=["'][^"']*td-for-select[^"']*["'][^>]*>|<td[^>]*>)\s*([\d.,]+\s*[a-zA-Z]+)\s*<\/td>[\s\S]*?<\/tr>/gi;
+    let rowMatch;
+    let foundInPage = 0;
+
+    while ((rowMatch = rowRegex.exec(html)) !== null) {
+      foundInPage++;
+      const rawHref = rowMatch[1];
+      const fullLink = rawHref.startsWith('http') ? rawHref : `${baseDomain}${rawHref}`;
+      
+      // Clean HTML tags from name
+      const rawName = rowMatch[2].replace(/<[^>]+>/g, '').trim();
+      const filename = sanitizePathSegment(rawName) || path.basename(rawHref).replace(/\.html$/i, '');
+      const sizeStr = rowMatch[3].trim();
+      const sizeBytes = parseHumanBytes(sizeStr);
+
+      if (!fileMap.has(fullLink)) {
+        fileMap.set(fullLink, {
+          name: filename,
+          relativePath: filename,
+          link: fullLink,
+          size: sizeBytes,
+          sizeStr,
+        });
+      }
+    }
+
+    // Fallback parser if regex didn't match table format
+    if (foundInPage === 0) {
+      const linkRegex = /href=["'](\/file\/[a-zA-Z0-9_-]+\/[^"']+)["']/gi;
+      let m;
+      while ((m = linkRegex.exec(html)) !== null) {
+        const rawHref = m[1];
+        const fullLink = rawHref.startsWith('http') ? rawHref : `${baseDomain}${rawHref}`;
+        const filename = sanitizePathSegment(path.basename(rawHref).replace(/\.html$/i, ''));
+        if (!fileMap.has(fullLink)) {
+          fileMap.set(fullLink, {
+            name: filename,
+            relativePath: filename,
+            link: fullLink,
+            size: 0,
+            sizeStr: 'Unknown',
+          });
+        }
+      }
+    }
+
+    // Check for next page in pager
+    // Example: <li class="page"><a href="/folder/8673733/MindValleyBecomingIrresistiblySexy.html?page=2">2</a></li>
+    // Example: <li class="next"><a href="...">...</a></li>
+    const nextPageMatch = html.match(/<li class=["'][^"']*next[^"']*["']>\s*<a\s+href=["']([^"']+)["']/i) ||
+                          html.match(/<li class=["']page["']>\s*<a\s+href=["']([^"']+)["'][^>]*>(?:\d+)<\/a>/i);
+
+    if (nextPageMatch) {
+      const nextHref = nextPageMatch[1];
+      const nextFullUrl = nextHref.startsWith('http') ? nextHref : `${baseDomain}${nextHref}`;
+      if (!visitedUrls.has(nextFullUrl)) {
+        currentUrl = nextFullUrl;
+        continue;
+      }
+    }
+
+    // No next page found
+    currentUrl = null;
+  }
+
+  const files = Array.from(fileMap.values());
+  const totalSize = files.reduce((acc, f) => acc + (f.size || 0), 0);
+
+  return {
+    folderName: resolvedFolderName || 'Rapidgator_Folder',
+    files,
+    totalSize,
+  };
+}
+
+/**
  * Parses user input for URLs, magnet links, or magnet IDs
  * Handles:
  * - https://alldebrid.com/getMagnet/685554127 (or getMagnet/685554127)
  * - magnet:?xt=urn:btih:...
  * - Direct magnet ID (e.g. 685554127)
+ * - Rapidgator / hoster folder links (e.g. https://rapidgator.net/folder/...)
  * - Direct hoster link (e.g. https://alldebrid.com/f/... or other hoster)
  */
 export function parseDownloadInput(rawInput) {
@@ -321,7 +470,18 @@ export function parseDownloadInput(rawInput) {
       continue;
     }
 
-    // 5. Check for standard HTTP/HTTPS links
+    // 5. Check for Rapidgator Folder URLs (e.g. rapidgator.net/folder/... or rg.to/folder/...)
+    if (/https?:\/\/(?:www\.)?(?:rapidgator\.net|rg\.to)\/folder\//i.test(line)) {
+      parsedItems.push({
+        type: 'folderLink',
+        host: 'rapidgator',
+        url: line,
+        original: line,
+      });
+      continue;
+    }
+
+    // 6. Check for standard HTTP/HTTPS links
     if (/^https?:\/\//i.test(line)) {
       parsedItems.push({
         type: 'directLink',
@@ -340,3 +500,4 @@ export function parseDownloadInput(rawInput) {
 
   return parsedItems;
 }
+

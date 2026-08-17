@@ -1514,6 +1514,103 @@ body.hpc-theme {
 }
 
 /* ============================================================
+   Archive Extraction Options & Automation Cards
+   ============================================================ */
+
+.review-options-card {
+  margin-top: 14px;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.extraction-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .extraction-options-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hpc-checkbox-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  user-select: none;
+}
+
+.hpc-checkbox-card:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-focus);
+}
+
+.hpc-checkbox-card input[type="checkbox"] {
+  accent-color: var(--accent-electric);
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chk-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chk-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chk-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.03em;
+}
+
+.chk-desc {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.status-pill.extracting {
+  color: var(--accent-electric);
+  border-color: rgba(0, 191, 255, 0.4);
+  background: rgba(0, 191, 255, 0.12);
+  animation: pulse-extract 1.4s infinite ease-in-out;
+}
+
+@keyframes pulse-extract {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(0, 191, 255, 0.2);
+    border-color: rgba(0, 191, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(0, 191, 255, 0.6);
+    border-color: var(--accent-electric);
+  }
+}
+
+/* ============================================================
    Responsive Layout & Breakpoints
    ============================================================ */
 
@@ -1558,3 +1655,4 @@ body.hpc-theme {
     flex: 1;
   }
 }
+

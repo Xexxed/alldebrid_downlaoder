@@ -8,6 +8,7 @@ import EventEmitter from 'events';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import { flattenFileTree, sanitizePathSegment, normalizeMagnetResponse } from './alldebrid.js';
+import { extractTaskArchives, isArchiveFile } from './extractor.js';
 
 export class DownloadEngine extends EventEmitter {
   constructor(alldebridClient, options = {}) {
@@ -56,7 +57,7 @@ export class DownloadEngine extends EventEmitter {
   /**
    * Add a new torrent / magnet task
    */
-  async addMagnetTask(magnetId, name = '', initialFilesTree = null, customOutputDir = null, selectedRelativePaths = null) {
+  async addMagnetTask(magnetId, name = '', initialFilesTree = null, customOutputDir = null, selectedRelativePaths = null, options = {}) {
     const taskId = `magnet_${magnetId}_${Date.now()}`;
     const cleanName = sanitizePathSegment(name) || `Torrent_${magnetId}`;
     
@@ -88,6 +89,13 @@ export class DownloadEngine extends EventEmitter {
       outputDir: targetFolder,
       baseOutputDir: baseDir,
       selectedPaths: selectedRelativePaths ? new Set(selectedRelativePaths) : null,
+      autoExtract: !!options.autoExtract,
+      deleteArchiveAfterExtract: !!options.deleteArchiveAfterExtract,
+      extractionStatus: null,
+      extractionError: null,
+      extractionMessage: null,
+      extracted: false,
+      isExtracting: false,
       addedAt: new Date().toISOString(),
       completedAt: null,
       files: [],
@@ -109,9 +117,107 @@ export class DownloadEngine extends EventEmitter {
   }
 
   /**
+   * Add a multi-file folder download task (e.g. Rapidgator folder)
+   */
+  async addFolderTask(folderName, files, customOutputDir = null, selectedRelativePaths = null, options = {}) {
+    const taskId = `folder_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const cleanName = sanitizePathSegment(folderName) || `Folder_${Date.now()}`;
+    
+    let baseDir = customOutputDir ? path.resolve(customOutputDir) : this.downloadDir;
+    let targetFolder;
+
+    if (path.basename(baseDir).toLowerCase() === cleanName.toLowerCase()) {
+      targetFolder = baseDir;
+      baseDir = path.dirname(baseDir);
+    } else {
+      targetFolder = path.join(baseDir, cleanName);
+    }
+
+    const task = {
+      id: taskId,
+      magnetId: null,
+      name: cleanName,
+      type: 'folder',
+      status: 'ready_to_download',
+      cloudStatus: null,
+      cloudProgress: 100,
+      totalSize: 0,
+      downloadedSize: 0,
+      progress: 0,
+      speed: 0,
+      eta: 0,
+      error: null,
+      outputDir: targetFolder,
+      baseOutputDir: baseDir,
+      selectedPaths: selectedRelativePaths ? new Set(selectedRelativePaths) : null,
+      autoExtract: !!options.autoExtract,
+      deleteArchiveAfterExtract: !!options.deleteArchiveAfterExtract,
+      extractionStatus: null,
+      extractionError: null,
+      extractionMessage: null,
+      extracted: false,
+      isExtracting: false,
+      addedAt: new Date().toISOString(),
+      completedAt: null,
+      files: [],
+    };
+
+    const selectedSet = selectedRelativePaths ? new Set(selectedRelativePaths) : null;
+    const filteredFiles = selectedSet
+      ? files.filter((f) => selectedSet.has(f.relativePath || f.name))
+      : files;
+
+    if (filteredFiles.length === 0) {
+      task.status = 'error';
+      task.error = 'No files selected for folder download';
+      this.tasks.set(taskId, task);
+      this.emit('taskAdded', task);
+      return task;
+    }
+
+    let totalBytes = 0;
+    const fileObjects = filteredFiles.map((item, idx) => {
+      const relPath = item.relativePath || item.name;
+      const relativeNorm = relPath.split('/').join(path.sep);
+      const fullLocalPath = path.join(targetFolder, relativeNorm);
+      const size = Number(item.size) || 0;
+      totalBytes += size;
+
+      const fObj = {
+        id: `${taskId}_f${idx}`,
+        taskId,
+        name: item.name || path.basename(relPath),
+        relativePath: relPath,
+        fullLocalPath,
+        size,
+        downloaded: 0,
+        link: item.link || item.url,
+        directUrl: item.directUrl || null,
+        status: 'pending',
+        error: null,
+        speed: 0,
+        bytesSample: 0,
+        progress: 0,
+      };
+
+      this.checkExistingFileSize(fObj);
+      return fObj;
+    });
+
+    task.files = fileObjects;
+    task.totalSize = totalBytes;
+
+    this.tasks.set(taskId, task);
+    this.emit('taskAdded', task);
+    this.updateTaskProgress(task);
+    this.processQueue();
+    return task;
+  }
+
+  /**
    * Add direct file download task (or link list)
    */
-  async addDirectLinkTask(url, customName = '', customOutputDir = null) {
+  async addDirectLinkTask(url, customName = '', customOutputDir = null, options = {}) {
     const taskId = `link_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const baseDir = customOutputDir ? path.resolve(customOutputDir) : this.downloadDir;
     const task = {
@@ -130,6 +236,13 @@ export class DownloadEngine extends EventEmitter {
       error: null,
       outputDir: baseDir,
       baseOutputDir: baseDir,
+      autoExtract: !!options.autoExtract,
+      deleteArchiveAfterExtract: !!options.deleteArchiveAfterExtract,
+      extractionStatus: null,
+      extractionError: null,
+      extractionMessage: null,
+      extracted: false,
+      isExtracting: false,
       addedAt: new Date().toISOString(),
       completedAt: null,
       files: [],
@@ -394,14 +507,79 @@ export class DownloadEngine extends EventEmitter {
 
       this.updateTaskProgress(task);
 
-      if (allFilesDone && task.files.length > 0) {
-        task.status = 'completed';
-        task.completedAt = new Date().toISOString();
-        task.progress = 100;
-        this.emit('taskCompleted', task);
+      if (allFilesDone && task.files.length > 0 && task.status !== 'completed' && task.status !== 'extracting') {
+        this.handleTaskCompletion(task);
       } else if (hasDownloading) {
         task.status = 'downloading';
       }
+    }
+  }
+
+  /**
+   * Handles task completion: triggers auto-extraction if enabled or marks completed
+   */
+  async handleTaskCompletion(task) {
+    if (task.status === 'completed' || task.status === 'extracting') return;
+
+    task.progress = 100;
+
+    if (task.autoExtract && !task.extracted && !task.isExtracting) {
+      task.isExtracting = true;
+      task.status = 'extracting';
+      task.extractionStatus = 'extracting';
+      this.emit('taskUpdated', task);
+
+      try {
+        const result = await extractTaskArchives(task, task.deleteArchiveAfterExtract);
+        task.isExtracting = false;
+        task.extracted = true;
+        task.extractionStatus = 'completed';
+        task.extractionMessage = result.message;
+        task.status = 'completed';
+        task.completedAt = new Date().toISOString();
+        this.emit('taskCompleted', task);
+      } catch (err) {
+        console.error(`Auto-extraction failed for ${task.name}:`, err);
+        task.isExtracting = false;
+        task.extractionStatus = 'error';
+        task.extractionError = err.message || 'Extraction failed';
+        task.status = 'completed';
+        task.completedAt = new Date().toISOString();
+        this.emit('taskCompleted', task);
+      }
+    } else {
+      task.status = 'completed';
+      task.completedAt = new Date().toISOString();
+      this.emit('taskCompleted', task);
+    }
+  }
+
+  /**
+   * Manually triggers archive extraction on a task
+   */
+  async extractTask(taskId) {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error('Task not found');
+
+    task.isExtracting = true;
+    task.extractionStatus = 'extracting';
+    task.extractionError = null;
+    this.emit('taskUpdated', task);
+
+    try {
+      const result = await extractTaskArchives(task, task.deleteArchiveAfterExtract);
+      task.isExtracting = false;
+      task.extracted = true;
+      task.extractionStatus = 'completed';
+      task.extractionMessage = result.message;
+      this.emit('taskUpdated', task);
+      return result;
+    } catch (err) {
+      task.isExtracting = false;
+      task.extractionStatus = 'error';
+      task.extractionError = err.message || 'Extraction failed';
+      this.emit('taskUpdated', task);
+      throw err;
     }
   }
 
@@ -593,10 +771,8 @@ export class DownloadEngine extends EventEmitter {
     task.downloadedSize = totalDownloaded;
     task.progress = task.totalSize > 0 ? Math.min(100, Math.round((totalDownloaded / task.totalSize) * 100)) : 0;
 
-    if (allDone && task.files.length > 0 && task.status !== 'completed') {
-      task.status = 'completed';
-      task.completedAt = new Date().toISOString();
-      this.emit('taskCompleted', task);
+    if (allDone && task.files.length > 0 && task.status !== 'completed' && task.status !== 'extracting') {
+      this.handleTaskCompletion(task);
     }
   }
 
@@ -725,6 +901,13 @@ export class DownloadEngine extends EventEmitter {
       eta: task.eta,
       error: task.error,
       outputDir: task.outputDir,
+      autoExtract: !!task.autoExtract,
+      deleteArchiveAfterExtract: !!task.deleteArchiveAfterExtract,
+      extractionStatus: task.extractionStatus,
+      extractionError: task.extractionError,
+      extractionMessage: task.extractionMessage,
+      extracted: !!task.extracted,
+      isExtracting: !!task.isExtracting,
       addedAt: task.addedAt,
       completedAt: task.completedAt,
       fileCount: task.files.length,

@@ -12,7 +12,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import multer from 'multer';
 import { exec } from 'child_process';
 
-import { AllDebridClient, parseDownloadInput, flattenFileTree, sanitizePathSegment, normalizeMagnetResponse } from './alldebrid.js';
+import { AllDebridClient, parseDownloadInput, flattenFileTree, sanitizePathSegment, normalizeMagnetResponse, fetchRapidgatorFolder } from './alldebrid.js';
+import { isArchiveFile } from './extractor.js';
 import { DownloadEngine } from './downloader.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -297,8 +298,33 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
     const items = parseDownloadInput(req.body.input);
     for (const item of items) {
       try {
-        if (item.type === 'getMagnet' || item.type === 'magnetId') {
-          previews.push(await resolveMagnetPreview(item.id));
+        if (item.type === 'folderLink' || (item.type === 'directLink' && /https?:\/\/(?:www\.)?(?:rapidgator\.net|rg\.to)\/folder\//i.test(item.url))) {
+          const folderUrl = item.url || item.original;
+          const folderData = await fetchRapidgatorFolder(folderUrl);
+          const folderName = folderData.folderName || 'Rapidgator_Folder';
+          const hasArchives = folderData.files.some((f) => isArchiveFile(f.name));
+
+          previews.push({
+            type: 'folder',
+            host: item.host || 'rapidgator',
+            name: folderName,
+            totalSize: folderData.totalSize,
+            isReady: true,
+            filesTree: null,
+            hasArchives,
+            flattenedFiles: folderData.files.map((f) => ({
+              name: f.name,
+              relativePath: f.relativePath || f.name,
+              size: f.size,
+              sizeStr: f.sizeStr,
+              link: f.link,
+            })),
+            defaultOutputDir: path.join(downloadDir, folderName),
+          });
+        } else if (item.type === 'getMagnet' || item.type === 'magnetId') {
+          const preview = await resolveMagnetPreview(item.id);
+          preview.hasArchives = preview.flattenedFiles?.some((f) => isArchiveFile(f.name));
+          previews.push(preview);
         } else if (item.type === 'magnet') {
           const uploadRes = await client.uploadMagnet(item.uri);
           const uploaded = uploadRes?.magnets?.[0];
@@ -309,7 +335,9 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
           }
 
           if (uploaded) {
-            previews.push(await resolveMagnetPreview(uploaded.id, uploaded.name, uploaded.size, uploaded.ready));
+            const preview = await resolveMagnetPreview(uploaded.id, uploaded.name, uploaded.size, uploaded.ready);
+            preview.hasArchives = preview.flattenedFiles?.some((f) => isArchiveFile(f.name));
+            previews.push(preview);
           }
         } else if (item.type === 'directLink') {
           const unlockData = await client.unlockLink(item.url);
@@ -322,6 +350,7 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
             totalSize: size,
             isReady: true,
             filesTree: null,
+            hasArchives: isArchiveFile(filename),
             flattenedFiles: [{ name: filename, relativePath: filename, size, link: item.url }],
             defaultOutputDir: path.join(downloadDir, filename),
           });
@@ -374,20 +403,36 @@ app.post('/api/downloads/add', async (req, res) => {
   if (Array.isArray(req.body.items) && req.body.items.length > 0) {
     for (const item of req.body.items) {
       try {
-        if (item.type === 'torrent' && item.magnetId) {
+        const options = {
+          autoExtract: !!item.autoExtract,
+          deleteArchiveAfterExtract: !!item.deleteArchiveAfterExtract,
+        };
+
+        if (item.type === 'folder' && Array.isArray(item.files)) {
+          const task = await engine.addFolderTask(
+            item.name,
+            item.files,
+            item.customOutputDir,
+            item.selectedFiles,
+            options
+          );
+          addedTasks.push(task);
+        } else if (item.type === 'torrent' && item.magnetId) {
           const task = await engine.addMagnetTask(
             item.magnetId,
             item.name,
             item.filesTree,
             item.customOutputDir,
-            item.selectedFiles
+            item.selectedFiles,
+            options
           );
           addedTasks.push(task);
         } else if (item.type === 'directLink' && item.url) {
           const task = await engine.addDirectLinkTask(
             item.url,
             item.name,
-            item.customOutputDir
+            item.customOutputDir,
+            options
           );
           addedTasks.push(task);
         }
@@ -405,7 +450,7 @@ app.post('/api/downloads/add', async (req, res) => {
   }
 
   // Fallback direct text input
-  const { input } = req.body;
+  const { input, autoExtract, deleteArchiveAfterExtract } = req.body;
   if (!input || typeof input !== 'string') {
     return res.status(400).json({ error: 'Input or items is required' });
   }
@@ -415,10 +460,25 @@ app.post('/api/downloads/add', async (req, res) => {
     return res.status(400).json({ error: 'No valid download links or magnet URIs detected' });
   }
 
+  const defaultOptions = {
+    autoExtract: !!autoExtract,
+    deleteArchiveAfterExtract: !!deleteArchiveAfterExtract,
+  };
+
   for (const item of items) {
     try {
-      if (item.type === 'getMagnet' || item.type === 'magnetId') {
-        const task = await engine.addMagnetTask(item.id);
+      if (item.type === 'folderLink' || (item.type === 'directLink' && /https?:\/\/(?:www\.)?(?:rapidgator\.net|rg\.to)\/folder\//i.test(item.url))) {
+        const folderData = await fetchRapidgatorFolder(item.url || item.original);
+        const task = await engine.addFolderTask(
+          folderData.folderName,
+          folderData.files,
+          null,
+          null,
+          defaultOptions
+        );
+        addedTasks.push(task);
+      } else if (item.type === 'getMagnet' || item.type === 'magnetId') {
+        const task = await engine.addMagnetTask(item.id, '', null, null, null, defaultOptions);
         addedTasks.push(task);
       } else if (item.type === 'magnet') {
         const uploadRes = await client.uploadMagnet(item.uri);
@@ -430,11 +490,11 @@ app.post('/api/downloads/add', async (req, res) => {
             continue;
           }
 
-          const task = await engine.addMagnetTask(uploaded.id, uploaded.name);
+          const task = await engine.addMagnetTask(uploaded.id, uploaded.name, null, null, null, defaultOptions);
           addedTasks.push(task);
         }
       } else if (item.type === 'directLink') {
-        const task = await engine.addDirectLinkTask(item.url);
+        const task = await engine.addDirectLinkTask(item.url, '', null, defaultOptions);
         addedTasks.push(task);
       }
     } catch (err) {
@@ -566,6 +626,18 @@ app.post('/api/downloads/:id/open-folder', (req, res) => {
     });
   } else {
     res.status(404).json({ error: 'Folder does not exist yet on disk' });
+  }
+});
+
+/**
+ * Manually trigger archive extraction on a task
+ */
+app.post('/api/downloads/:id/extract', async (req, res) => {
+  try {
+    const result = await engine.extractTask(req.params.id);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Extraction failed' });
   }
 });
 
