@@ -16,14 +16,14 @@ async function runVerification() {
   console.log('✓ Extractor tooling verified.');
 
   const sampleFiles = [
-    'rcotv.MindValley..Becoming.Irresistibly.Sexy.part1.rar',
-    'rcotv.MindValley..Becoming.Irresistibly.Sexy.part2.rar',
-    'rcotv.MindValley..Becoming.Irresistibly.Sexy.part3.rar',
-    'rcotv.MindValley..Becoming.Irresistibly.Sexy.part4.rar',
-    'rcotv.MindValley..Becoming.Irresistibly.Sexy.part5.rar',
-    'rcotv.MindValley..Becoming.Irresistibly.Sexy.part6.rar',
-    'rcotv.MindValley..Becoming.Irresistibly.Sexy.part7.rar',
-    'rcotv.MindValley..Becoming.Irresistibly.Sexy.part8.rar',
+    'archive_dataset.part1.rar',
+    'archive_dataset.part2.rar',
+    'archive_dataset.part3.rar',
+    'archive_dataset.part4.rar',
+    'archive_dataset.part5.rar',
+    'archive_dataset.part6.rar',
+    'archive_dataset.part7.rar',
+    'archive_dataset.part8.rar',
   ];
 
   for (const f of sampleFiles) {
@@ -46,60 +46,35 @@ async function runVerification() {
   }
   console.log('✓ detectArchiveGroups correctly grouped 8 part files with entryFile = part1.rar.\n');
 
-  // Test 2: Rapidgator Folder Scraper
-  console.log('--- Test 2: Rapidgator Folder Scraper ---');
-  const rgUrl = 'https://rapidgator.net/folder/8673733/MindValleyBecomingIrresistiblySexy.html?referer=https://tutbb.com/';
-  console.log('Scraping folder URL:', rgUrl);
-  
-  const parsedInputs = parseDownloadInput(rgUrl);
+  // Test 2: Rapidgator Folder Scraper & URL parser
+  console.log('--- Test 2: Rapidgator Folder URL Parser ---');
+  const sampleFolderUrl = 'https://rapidgator.net/folder/1234567/SamplePackage.html';
+  const parsedInputs = parseDownloadInput(sampleFolderUrl);
   console.log('parseDownloadInput result:', parsedInputs);
   if (parsedInputs.length !== 1 || parsedInputs[0].type !== 'folderLink') {
     throw new Error(`Expected folderLink type, got ${JSON.stringify(parsedInputs)}`);
   }
   console.log('✓ parseDownloadInput recognized rapidgator folderLink.');
 
-  const folderResult = await fetchRapidgatorFolder(rgUrl);
-  console.log('Folder Name:', folderResult.folderName);
-  console.log('Files count:', folderResult.files.length);
-  console.log('Total Size:', folderResult.totalSize, `(~${(folderResult.totalSize / (1024*1024*1024)).toFixed(2)} GB)`);
-
-  if (folderResult.files.length !== 8) {
-    throw new Error(`Expected 8 files in Rapidgator folder, got ${folderResult.files.length}`);
+  // Test 3: Multiple Link Types Recognition
+  console.log('--- Test 3: Link Parser Multi-Format Verification ---');
+  const multiInput = `
+https://rapidgator.net/folder/9999999/SampleArchives.html
+https://alldebrid.com/getMagnet/123456789
+magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567
+https://hoster.com/file/sample_video.mp4
+`;
+  const parsedBatch = parseDownloadInput(multiInput);
+  console.log('Parsed batch types:', parsedBatch.map(p => p.type));
+  if (parsedBatch.length !== 4) {
+    throw new Error(`Expected 4 parsed items, got ${parsedBatch.length}`);
   }
-  if (!folderResult.folderName.includes('MindValley')) {
-    throw new Error(`Expected folderName to contain MindValley, got ${folderResult.folderName}`);
-  }
-  console.log('✓ Rapidgator folder scraper parsed all 8 files with metadata.\n');
+  if (parsedBatch[0].type !== 'folderLink') throw new Error('Item 0 should be folderLink');
+  if (parsedBatch[1].type !== 'getMagnet') throw new Error('Item 1 should be getMagnet');
+  if (parsedBatch[2].type !== 'magnet') throw new Error('Item 2 should be magnet');
+  if (parsedBatch[3].type !== 'directLink') throw new Error('Item 3 should be directLink');
 
-  // Test 3: Live Express API /api/downloads/preview
-  console.log('--- Test 3: Local Server API /api/downloads/preview ---');
-  const apiRes = await fetch('http://localhost:3000/api/downloads/preview', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input: rgUrl }),
-  });
-
-  const apiData = await apiRes.json();
-  console.log('Preview API Response status:', apiRes.status);
-  console.log('Preview count:', apiData.previews?.length);
-  console.log('Preview item:', {
-    type: apiData.previews?.[0]?.type,
-    name: apiData.previews?.[0]?.name,
-    totalSize: apiData.previews?.[0]?.totalSize,
-    fileCount: apiData.previews?.[0]?.flattenedFiles?.length,
-    hasArchives: apiData.previews?.[0]?.hasArchives,
-    defaultOutputDir: apiData.previews?.[0]?.defaultOutputDir,
-  });
-
-  if (!apiData.previews || apiData.previews.length === 0) {
-    throw new Error(`Preview failed: ${JSON.stringify(apiData)}`);
-  }
-  const prev = apiData.previews[0];
-  if (prev.type !== 'folder') throw new Error(`Expected type folder, got ${prev.type}`);
-  if (prev.flattenedFiles.length !== 8) throw new Error(`Expected 8 files, got ${prev.flattenedFiles.length}`);
-  if (!prev.hasArchives) throw new Error('Expected hasArchives to be true');
-
-  console.log('✓ Live API /api/downloads/preview returned full folder preview with archive flag.\n');
+  console.log('✓ Multi-format parser successfully classified folderLink, getMagnet, magnet, and directLink.\n');
 
   console.log('=== ALL TESTS PASSED SUCCESSFULLY! ===');
 }

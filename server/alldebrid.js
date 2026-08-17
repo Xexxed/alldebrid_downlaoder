@@ -381,7 +381,7 @@ export async function fetchRapidgatorFolder(folderUrl) {
     }
 
     // Check for next page in pager
-    // Example: <li class="page"><a href="/folder/8673733/MindValleyBecomingIrresistiblySexy.html?page=2">2</a></li>
+    // Example: <li class="page"><a href="/folder/1234567/sample_folder.html?page=2">2</a></li>
     // Example: <li class="next"><a href="...">...</a></li>
     const nextPageMatch = html.match(/<li class=["'][^"']*next[^"']*["']>\s*<a\s+href=["']([^"']+)["']/i) ||
                           html.match(/<li class=["']page["']>\s*<a\s+href=["']([^"']+)["'][^>]*>(?:\d+)<\/a>/i);

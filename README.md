@@ -56,7 +56,7 @@ A modern, full-featured, and self-hosted torrent, file hoster, and cloud downloa
 |  [ Active Pipeline (2) ]  [ Completed (14) ]  [ Cloud Storage (5) ]  [ Engine Config ] |
 +---------------------------------------------------------------------------------------+
 |                                                                                       |
-|  📁 MindValleyBecomingIrresistiblySexy                    [ EXTRACTING ARCHIVE... ]   |
+|  📁 Dataset_Archive_Bundle                                [ EXTRACTING ARCHIVE... ]   |
 |     8 FILES • 7.41 GB / 7.41 GB • ⚡ AUTO-EXTRACT                                     |
 |     [======================================================== 100% ]                  |
 |     SPEED: --  •  PROGRESS: 100%  •  ⚡ DECOMPRESSING ARCHIVE FILES...                 |
@@ -141,7 +141,7 @@ http://localhost:3000
 1. Click **NEW TASK**.
 2. Paste any Rapidgator folder URL:
    ```
-   https://rapidgator.net/folder/8673733/MindValleyBecomingIrresistiblySexy.html
+   https://rapidgator.net/folder/1234567/sample_folder.html
    ```
 3. Click **INSPECT & REVIEW STRUCTURE**.
 4. The system will crawl the folder, fetch all pages, and list all files in the folder.
