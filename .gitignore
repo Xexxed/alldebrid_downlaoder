@@ -39,3 +39,15 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 .remote-code-express/
+
+# Electron & Build Artifacts
+dist/
+build/
+release/
+out/
+*.exe
+*.blockmap
+
+# Firecrawl Cache
+.firecrawl/
+

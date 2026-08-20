@@ -82,8 +82,10 @@ A modern, full-featured, and self-hosted torrent, file hoster, and cloud downloa
 
 ## 🛠️ Tech Stack
 
+* **Desktop Application**: Electron 43 with System Tray, Native OS Dialogs, and Windows Notifications
 * **Backend**: Node.js (ES Modules), Express 4, WebSocket (`ws`), Multer
 * **Frontend**: Vanilla HTML5, Vanilla CSS3 (Custom HPC Design System), Vanilla JavaScript
+* **Packaging**: Electron Builder (NSIS Installer & Portable Windows Executables)
 * **API Integration**: AllDebrid REST API v4 & v4.1
 * **Decompression Engine**: System-level integration with `7-Zip`, `WinRAR`, and `tar`
 
@@ -117,21 +119,32 @@ DOWNLOAD_DIR=./downloads
 MAX_CONCURRENT_DOWNLOADS=3
 ```
 
-> **Note**: You can also configure your API key and download directory directly within the Web UI under the **Engine Config** tab.
+> **Note**: You can also configure your API key and download directory directly within the UI under the **Engine Config** tab.
 
-### 3. Run the Server
+### 3. Launch Modes
+
+#### 🖥️ Desktop Application (Electron):
 ```bash
-# Production mode
+# Launch Electron Desktop App
+npm run electron
+
+# Or in development mode
+npm run electron:dev
+
+# Build Windows Installer & Portable Executable
+npm run dist
+```
+
+#### 🌐 Web / Headless Server Mode:
+```bash
+# Production web server
 npm start
 
 # Development mode (with auto-reload)
 npm run dev
 ```
 
-Open your browser and navigate to:
-```
-http://localhost:3000
-```
+Open your browser at `http://localhost:3000` (or enjoy the native desktop window!).
 
 ---
 

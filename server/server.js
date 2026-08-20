@@ -65,6 +65,7 @@ const engine = new DownloadEngine(client, {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(ROOT_DIR, 'public')));
+app.use('/assets', express.static(path.join(ROOT_DIR, 'assets')));
 
 // Broadcast updates to all connected WebSocket clients
 function broadcast(payload) {
@@ -857,12 +858,36 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(ROOT_DIR, 'public', 'index.html'));
 });
 
-// Start Server
-server.listen(PORT, () => {
-  console.log(`=================================================`);
-  console.log(`🚀 AllDebrid Downloader is running!`);
-  console.log(`🌐 Web Interface: http://localhost:${PORT}`);
-  console.log(`📁 Download Path : ${downloadDir}`);
-  console.log(`🔑 API Key Status: ${apiKey ? 'Configured ✅' : 'Missing (Set in UI) ⚠️'}`);
-  console.log(`=================================================`);
-});
+// Start Server function
+export function startServer(customPort = null) {
+  const portToUse = customPort || PORT;
+  return new Promise((resolve, reject) => {
+    server.listen(portToUse, () => {
+      console.log(`=================================================`);
+      console.log(`🚀 AllDebrid Downloader is running!`);
+      console.log(`🌐 Web Interface: http://localhost:${portToUse}`);
+      console.log(`📁 Download Path : ${downloadDir}`);
+      console.log(`🔑 API Key Status: ${apiKey ? 'Configured ✅' : 'Missing (Set in UI) ⚠️'}`);
+      console.log(`=================================================`);
+      resolve({ server, app, engine, wss, port: portToUse });
+    });
+    server.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+// Auto-start if run directly from node CLI (e.g. node server/server.js)
+const isDirectExecution = process.argv[1] && (
+  process.argv[1] === fileURLToPath(import.meta.url) ||
+  process.argv[1].endsWith('server.js')
+);
+
+if (isDirectExecution && !process.versions.electron) {
+  startServer(PORT).catch((err) => {
+    console.error('Failed to start server:', err);
+  });
+}
+
+export { app, server, engine, wss, client, PORT };
+

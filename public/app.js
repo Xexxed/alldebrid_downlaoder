@@ -920,8 +920,17 @@ elements.selectFolderConfirmBtn.onclick = () => {
   showToast(`Selected destination: ${chosenPath}`, 'info');
 };
 
-elements.browseDownloadDirBtn.onclick = () => {
-  openFolderBrowser(elements.downloadDirInput.value.trim(), (selectedPath) => {
+elements.browseDownloadDirBtn.onclick = async () => {
+  const currentDir = elements.downloadDirInput.value.trim();
+  if (window.electronAPI && typeof window.electronAPI.selectFolder === 'function') {
+    const selected = await window.electronAPI.selectFolder(currentDir);
+    if (selected) {
+      elements.downloadDirInput.value = selected;
+      showToast(`Selected directory: ${selected}`, 'info');
+    }
+    return;
+  }
+  openFolderBrowser(currentDir, (selectedPath) => {
     elements.downloadDirInput.value = selectedPath;
   });
 };
@@ -1005,8 +1014,16 @@ elements.cancelReviewBtn.onclick = () => {
   elements.addDownloadModal.classList.add('active');
 };
 
-elements.changeReviewDirBtn.onclick = () => {
+elements.changeReviewDirBtn.onclick = async () => {
   const currentDir = elements.reviewOutputDirInput.value.trim();
+  if (window.electronAPI && typeof window.electronAPI.selectFolder === 'function') {
+    const selected = await window.electronAPI.selectFolder(currentDir);
+    if (selected) {
+      elements.reviewOutputDirInput.value = selected;
+      showToast(`Selected directory: ${selected}`, 'info');
+    }
+    return;
+  }
   openFolderBrowser(currentDir, (selectedPath) => {
     elements.reviewOutputDirInput.value = selectedPath;
   });

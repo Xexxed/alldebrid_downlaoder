@@ -2,23 +2,67 @@
   "name": "alldebrid-downloader",
   "version": "1.0.0",
   "description": "High-performance AllDebrid Torrent and File Downloader with folder structure preservation and modern Web UI",
-  "main": "server/server.js",
+  "main": "electron/main.js",
   "type": "module",
   "scripts": {
     "start": "node --env-file=.env server/server.js",
-    "dev": "node --watch --env-file=.env server/server.js"
+    "dev": "node --watch --env-file=.env server/server.js",
+    "electron": "electron .",
+    "electron:dev": "cross-env NODE_ENV=development electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "test": "node test/test_server_endpoints.js"
   },
   "dependencies": {
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",
     "ws": "^8.18.0"
   },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.alldebrid.downloader",
+    "productName": "AllDebrid Downloader",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "server/**/*",
+      "public/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
   "keywords": [
     "alldebrid",
     "downloader",
     "torrent",
     "magnet",
-    "debrid"
+    "debrid",
+    "electron"
   ],
   "author": "",
   "license": "ISC"
