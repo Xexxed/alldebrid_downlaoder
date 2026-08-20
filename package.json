@@ -14,6 +14,7 @@
     "test": "node test/test_server_endpoints.js"
   },
   "dependencies": {
+    "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",
     "ws": "^8.18.0"
@@ -40,11 +41,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.png"

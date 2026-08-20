@@ -351,6 +351,7 @@ function setupEngineListeners() {
  * App Lifecycle
  */
 app.whenReady().then(async () => {
+  process.env.APP_DATA_DIR = app.getPath('userData');
   setupIpcHandlers();
 
   try {

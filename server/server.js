@@ -13,6 +13,8 @@ import multer from 'multer';
 import { exec } from 'child_process';
 import dotenv from 'dotenv';
 
+import os from 'os';
+
 import { AllDebridClient, parseDownloadInput, flattenFileTree, sanitizePathSegment, normalizeMagnetResponse, fetchRapidgatorFolder } from './alldebrid.js';
 import { isArchiveFile } from './extractor.js';
 import { DownloadEngine } from './downloader.js';
@@ -22,7 +24,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 
-dotenv.config({ path: path.join(ROOT_DIR, '.env') });
+// In Electron packaged builds, write config to AppData/UserData; in standalone Node, use project root
+const CONFIG_DIR = process.env.APP_DATA_DIR || ROOT_DIR;
+const ENV_PATH = path.join(CONFIG_DIR, '.env');
+const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
+
+if (fs.existsSync(ENV_PATH)) {
+  dotenv.config({ path: ENV_PATH });
+} else if (fs.existsSync(ROOT_ENV_PATH)) {
+  dotenv.config({ path: ROOT_ENV_PATH });
+} else {
+  dotenv.config();
+}
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -50,7 +63,15 @@ const upload = multer({
 
 // App State
 let apiKey = process.env.ALLDEBRID_API_KEY || '';
-let downloadDir = path.resolve(ROOT_DIR, process.env.DOWNLOAD_DIR || './downloads');
+let defaultDownloadDir = process.env.DOWNLOAD_DIR;
+if (!defaultDownloadDir) {
+  if (process.versions.electron) {
+    defaultDownloadDir = path.join(os.homedir(), 'Downloads', 'AllDebrid');
+  } else {
+    defaultDownloadDir = path.resolve(ROOT_DIR, './downloads');
+  }
+}
+let downloadDir = path.resolve(defaultDownloadDir);
 let maxConcurrent = parseInt(process.env.MAX_CONCURRENT_DOWNLOADS, 10) || 3;
 let jackettUrl = process.env.JACKETT_URL || '';
 let jackettApiKey = process.env.JACKETT_API_KEY || '';
@@ -820,7 +841,7 @@ app.post('/api/settings', async (req, res) => {
     jackettApiKey = newJackettApiKey.trim();
   }
 
-  // Update .env file
+  // Update .env file in CONFIG_DIR
   try {
     const envContent = `# AllDebrid API Key (Generate one from https://alldebrid.com/apikeys)
 ALLDEBRID_API_KEY=${apiKey}
@@ -836,7 +857,8 @@ MAX_CONCURRENT_DOWNLOADS=${maxConcurrent}
 JACKETT_URL=${jackettUrl}
 JACKETT_API_KEY=${jackettApiKey}
 `;
-    fs.writeFileSync(path.join(ROOT_DIR, '.env'), envContent, 'utf-8');
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(ENV_PATH, envContent, 'utf-8');
   } catch (err) {
     console.error('Failed to write .env:', err);
   }
