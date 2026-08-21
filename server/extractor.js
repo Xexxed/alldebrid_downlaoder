@@ -187,7 +187,7 @@ export function detectArchiveGroups(filePathsOrObjects, baseDir = '') {
 /**
  * Extracts a single archive group to destination directory
  */
-export async function extractArchive(entryFilePath, targetDir, options = {}) {
+async function extractArchive(entryFilePath, targetDir, options = {}) {
   const extractor = detectExtractor();
   if (!extractor) {
     throw new Error('No supported archive extractor (7-Zip, WinRAR, or tar) found on this machine');

@@ -1,5 +1,5 @@
 import { fetchRapidgatorFolder, parseDownloadInput } from '../server/alldebrid.js';
-import { detectExtractor, detectArchiveGroups, isArchiveFile, extractArchive } from '../server/extractor.js';
+import { detectExtractor, detectArchiveGroups, isArchiveFile } from '../server/extractor.js';
 import fs from 'fs';
 import path from 'path';
 

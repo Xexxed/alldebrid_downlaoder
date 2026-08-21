@@ -51,3 +51,7 @@ out/
 # Firecrawl Cache
 .firecrawl/
 
+# Fallow Cache & Review Artifacts
+.fallow/
+.fallow-review/
+

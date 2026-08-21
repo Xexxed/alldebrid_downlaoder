@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { AllDebridClient } from '../server/alldebrid.js';
-import { searchAggregator, searchYTS, searchEZTV, searchNyaa, searchPirateBay, extractHashFromMagnet } from '../server/search.js';
+import { searchAggregator, searchYTS, searchNyaa, searchPirateBay, extractHashFromMagnet } from '../server/search.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

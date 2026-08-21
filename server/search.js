@@ -16,7 +16,7 @@ const DEFAULT_TRACKERS = [
   'udp://tracker.coppersurfer.tk:6969/announce',
 ];
 
-export function formatBytes(bytes, decimals = 2) {
+function formatBytes(bytes, decimals = 2) {
   if (!bytes || bytes === 0) return '0 B';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
@@ -40,7 +40,7 @@ export function extractHashFromMagnet(magnetUri) {
 /**
  * Builds standard magnet URI from hash, title, and tracker list
  */
-export function buildMagnetUri(hash, title, extraTrackers = []) {
+function buildMagnetUri(hash, title, extraTrackers = []) {
   if (!hash) return '';
   const cleanHash = hash.trim().toLowerCase();
   const trParams = [...DEFAULT_TRACKERS, ...extraTrackers]
@@ -156,7 +156,7 @@ export async function searchYTS(query) {
 /**
  * Search EZTV for TV Shows
  */
-export async function searchEZTV(query) {
+async function searchEZTV(query) {
   if (!query || !query.trim()) return [];
   const mirrors = ['https://eztvx.to', 'https://eztv.re', 'https://eztv.wf'];
   let torrents = null;
@@ -252,7 +252,7 @@ export async function searchNyaa(query) {
 /**
  * Search custom Jackett / Prowlarr instance
  */
-export async function searchJackett(query, jackettUrl, jackettApiKey) {
+async function searchJackett(query, jackettUrl, jackettApiKey) {
   if (!jackettUrl || !jackettApiKey || !query || !query.trim()) return [];
   const cleanUrl = jackettUrl.replace(/\/+$/, '');
   const url = `${cleanUrl}/api/v2.0/indexers/all/results?apikey=${encodeURIComponent(jackettApiKey)}&Query=${encodeURIComponent(query.trim())}`;
