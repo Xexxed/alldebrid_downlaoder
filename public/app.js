@@ -28,6 +28,87 @@ const state = {
   searchCategory: 'all',
   searchResults: [],
   isSearching: false,
+  // Cloud Manager State
+  cloudSelection: new Set(),
+  cloudSortMode: 'default',
+  stats: null,
+};
+
+// ============================================================
+// Auth Token Handling & API Wrapper
+// ============================================================
+
+const TOKEN_STORAGE_KEY = 'adc_auth_token';
+
+function getStoredToken() {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function storeToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {}
+}
+
+function withToken(url) {
+  const token = getStoredToken();
+  if (!token) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+}
+
+async function apiFetch(url, options = {}) {
+  const token = getStoredToken();
+  const headers = { ...(options.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(withToken(url), { ...options, headers });
+
+  if (res.status === 401) {
+    showTokenModal();
+    throw new Error('Unauthorized: valid access token required');
+  }
+  return res;
+}
+
+function showTokenModal() {
+  const modal = document.getElementById('tokenAuthModal');
+  if (!modal || !modal.classList.contains('active')) {
+    if (modal) {
+      modal.classList.add('active');
+      const input = document.getElementById('tokenAuthInput');
+      if (input) {
+        input.value = getStoredToken();
+        setTimeout(() => input.focus(), 50);
+      }
+    }
+  }
+}
+
+window.submitAuthToken = async function () {
+  const input = document.getElementById('tokenAuthInput');
+  const token = (input?.value || '').trim();
+  try {
+    const res = await apiFetch('/api/auth-check', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (data.tokenValid) {
+      storeToken(token);
+      document.getElementById('tokenAuthModal').classList.remove('active');
+      showToast('Access token accepted', 'success');
+      connectWebSocket();
+      fetchStatus();
+    } else {
+      showToast('Invalid access token', 'error');
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 };
 
 // DOM Elements
@@ -113,6 +194,24 @@ const elements = {
   jackettUrlInput: document.getElementById('jackettUrlInput'),
   jackettApiKeyInput: document.getElementById('jackettApiKeyInput'),
   testApiBtn: document.getElementById('testApiBtn'),
+  // Extended engine settings
+  speedLimitInput: document.getElementById('speedLimitInput'),
+  maxRetriesInput: document.getElementById('maxRetriesInput'),
+  minFreeGbInput: document.getElementById('minFreeGbInput'),
+  scheduleEnabledCheckbox: document.getElementById('scheduleEnabledCheckbox'),
+  scheduleStartInput: document.getElementById('scheduleStartInput'),
+  scheduleEndInput: document.getElementById('scheduleEndInput'),
+  scheduleLimitInput: document.getElementById('scheduleLimitInput'),
+  authTokenInput: document.getElementById('authTokenInput'),
+  authTokenMasked: document.getElementById('authTokenMasked'),
+  // Cloud manager
+  cloudSelectAllCheckbox: document.getElementById('cloudSelectAllCheckbox'),
+  cloudSortSelect: document.getElementById('cloudSortSelect'),
+  cloudBulkDeleteBtn: document.getElementById('cloudBulkDeleteBtn'),
+  cloudUsageBar: document.getElementById('cloudUsageBar'),
+  cloudUsageText: document.getElementById('cloudUsageText'),
+  // Stats
+  todayDownloaded: document.getElementById('todayDownloaded'),
   // Search & Discover
   torrentSearchInput: document.getElementById('torrentSearchInput'),
   triggerSearchBtn: document.getElementById('triggerSearchBtn'),
@@ -231,7 +330,7 @@ let reconnectTimer = null;
 
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}`;
+  const wsUrl = withToken(`${protocol}//${window.location.host}`);
 
   ws = new WebSocket(wsUrl);
 
@@ -283,6 +382,9 @@ function handleWsMessage(msg) {
     state.tasks.delete(msg.taskId);
     renderTasks();
     updateGlobalStats();
+  } else if (msg.type === 'disk_warning') {
+    showToast(msg.message, 'error');
+    renderTasks();
   }
 }
 
@@ -292,7 +394,7 @@ function handleWsMessage(msg) {
 
 async function fetchStatus() {
   try {
-    const res = await fetch('/api/status');
+    const res = await apiFetch('/api/status');
     const data = await res.json();
 
     state.settings.hasApiKey = data.hasApiKey;
@@ -320,14 +422,57 @@ async function fetchStatus() {
     elements.maxConcurrentRange.value = data.maxConcurrent || 3;
     elements.maxConcurrentVal.textContent = `${data.maxConcurrent || 3} WORKERS`;
 
-    // Fetch extended settings (Jackett)
-    const setRes = await fetch('/api/settings');
+    // Fetch extended settings (Jackett, limits, schedule)
+    const setRes = await apiFetch('/api/settings');
     const setData = await setRes.json();
     if (setData.jackettUrl && elements.jackettUrlInput) {
       elements.jackettUrlInput.value = setData.jackettUrl;
     }
+    if (elements.speedLimitInput) {
+      elements.speedLimitInput.value = setData.speedLimitKbps ?? 0;
+    }
+    if (elements.maxRetriesInput) {
+      elements.maxRetriesInput.value = setData.maxRetries ?? 3;
+    }
+    if (elements.minFreeGbInput) {
+      elements.minFreeGbInput.value = setData.minFreeGb ?? 5;
+    }
+    if (elements.scheduleEnabledCheckbox) {
+      elements.scheduleEnabledCheckbox.checked = !!setData.scheduleEnabled;
+      elements.scheduleStartInput.value = setData.scheduleStart || '';
+      elements.scheduleEndInput.value = setData.scheduleEnd || '';
+      elements.scheduleLimitInput.value = setData.scheduleLimitKbps ?? 0;
+      syncScheduleFieldsState();
+    }
+    if (elements.authTokenMasked) {
+      elements.authTokenMasked.textContent = setData.authTokenMasked || 'NOT SET';
+      elements.authTokenInput.placeholder = setData.hasAuthToken ? `Current: ${setData.authTokenMasked}` : 'Set an access token...';
+    }
+
+    // Fetch usage stats
+    fetchStats();
   } catch (err) {
     console.error('Failed to fetch status:', err);
+  }
+}
+
+async function fetchStats() {
+  try {
+    const res = await apiFetch('/api/stats');
+    const data = await res.json();
+    state.stats = data;
+
+    const todayEl = document.getElementById('todayDownloaded');
+    if (todayEl) todayEl.textContent = formatBytes(data.todayBytes || 0);
+
+    const lifetimeTotal = document.getElementById('statsLifetimeBytes');
+    if (lifetimeTotal) lifetimeTotal.textContent = formatBytes(data.totalBytes || 0);
+    const peakSpeed = document.getElementById('statsPeakSpeed');
+    if (peakSpeed) peakSpeed.textContent = formatSpeed(data.peakSpeed || 0);
+    const activeTime = document.getElementById('statsActiveTime');
+    if (activeTime) activeTime.textContent = formatEta(data.activeSeconds || 0);
+  } catch (err) {
+    console.error('Failed to fetch stats:', err);
   }
 }
 
@@ -341,7 +486,7 @@ async function fetchCloudMagnets() {
   `;
 
   try {
-    const res = await fetch('/api/cloud-magnets');
+    const res = await apiFetch('/api/cloud-magnets');
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -387,8 +532,13 @@ function renderTasks() {
   const completedQuery = elements.completedSearchInput.value.toLowerCase().trim();
 
   const allTasks = Array.from(state.tasks.values());
-  const activeTasks = allTasks.filter((t) => t.status !== 'completed' && (!activeQuery || t.name.toLowerCase().includes(activeQuery)));
-  const completedTasks = allTasks.filter((t) => t.status === 'completed' && (!completedQuery || t.name.toLowerCase().includes(completedQuery)));
+  const priorityOrder = { 0: 0, 1: 1, 2: 2 };
+  const activeTasks = allTasks
+    .filter((t) => t.status !== 'completed' && (!activeQuery || t.name.toLowerCase().includes(activeQuery)))
+    .sort((a, b) => (priorityOrder[a.priority ?? 1] - priorityOrder[b.priority ?? 1]) || String(a.addedAt).localeCompare(String(b.addedAt)));
+  const completedTasks = allTasks
+    .filter((t) => t.status === 'completed' && (!completedQuery || t.name.toLowerCase().includes(completedQuery)))
+    .sort((a, b) => String(b.completedAt || b.addedAt).localeCompare(String(a.completedAt || a.addedAt)));
 
   // Render Active
   if (activeTasks.length === 0) {
@@ -425,6 +575,29 @@ function createTaskCardHtml(task) {
 
   const typeIcon = task.type === 'torrent' ? ICONS.folder : task.type === 'folder' ? ICONS.folder : ICONS.link;
 
+  // Auto-retry countdown
+  let retryInfo = '';
+  if (!isCompleted && task.retryingCount > 0 && task.nextRetryAt) {
+    const secsLeft = Math.max(0, Math.ceil((task.nextRetryAt - Date.now()) / 1000));
+    retryInfo = `
+      <div class="metric-item" style="color:var(--accent-amber)">
+        ⟳ AUTO-RETRYING ${task.retryingCount} FILE(S) IN ${secsLeft}s
+      </div>
+    `;
+  }
+
+  const priorityLabels = { 0: 'HIGH', 1: 'NORM', 2: 'LOW' };
+  const currentPriority = task.priority ?? 1;
+  const priorityButtons = !isCompleted
+    ? `
+      <div class="priority-controls" title="Queue priority">
+        ${[0, 1, 2].map((p) => `
+          <button class="btn-priority ${currentPriority === p ? 'active p-' + p : ''}" onclick="setTaskPriority('${task.id}', ${p})" title="Set ${priorityLabels[p]} priority">${priorityLabels[p][0]}</button>
+        `).join('')}
+      </div>
+    `
+    : '';
+
   return `
     <div class="task-card" data-task-id="${task.id}">
       <div class="task-header">
@@ -433,6 +606,7 @@ function createTaskCardHtml(task) {
           <div>
             <div class="task-name" title="${task.name}">${task.name}</div>
             <div class="task-meta-pills" style="margin-top: 6px;">
+              <span class="telemetry-badge">P:${priorityLabels[currentPriority]}</span>
               <span class="telemetry-badge">${task.files?.length || task.fileCount || 1} FILES</span>
               <span class="telemetry-badge">${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}</span>
               ${task.autoExtract && !task.extracted && !isCompleted ? `<span class="telemetry-badge" style="color:var(--accent-electric);border-color:rgba(0,191,255,0.4)">⚡ AUTO-EXTRACT</span>` : ''}
@@ -470,6 +644,7 @@ function createTaskCardHtml(task) {
                 <span class="metric-val">${formatEta(task.eta)}</span>
               </div>
             ` : ''}
+            ${retryInfo}
             ${isExtracting ? `
               <div class="metric-item highlight" style="color:var(--accent-electric)">
                 ⚡ DECOMPRESSING ARCHIVE FILES...
@@ -485,6 +660,7 @@ function createTaskCardHtml(task) {
       </div>
 
       <div class="task-actions">
+        ${priorityButtons}
         <button class="btn btn-secondary btn-sm" onclick="openFileTreeModal('${task.id}')" title="Inspect file hierarchy">
           <span class="btn-svg">${ICONS.folder}</span>
           <span>STRUCTURE</span>
@@ -533,11 +709,55 @@ function createTaskCardHtml(task) {
   `;
 }
 
+function sortCloudMagnets(list) {
+  const mode = state.cloudSortMode;
+  const sorted = [...list];
+  if (mode === 'name') {
+    sorted.sort((a, b) => String(a.filename || '').localeCompare(String(b.filename || ''), undefined, { sensitivity: 'base' }));
+  } else if (mode === 'size') {
+    sorted.sort((a, b) => (b.size || 0) - (a.size || 0));
+  } else if (mode === 'age') {
+    sorted.sort((a, b) => String(b.uploadDate || '').localeCompare(String(a.uploadDate || '')));
+  }
+  return sorted;
+}
+
+function updateCloudUsageBar() {
+  const totalBytes = state.cloudMagnets.reduce((acc, m) => acc + (m.size || 0), 0);
+  if (elements.cloudUsageText) {
+    elements.cloudUsageText.textContent = `${state.cloudMagnets.length} MAGNETS • ${formatBytes(totalBytes)} IN CLOUD`;
+  }
+  const pct = Math.min(100, (totalBytes / (50 * 1024 ** 4)) * 100); // indicative scale vs 50 TB
+  if (elements.cloudUsageBar) {
+    elements.cloudUsageBar.style.width = `${Math.max(1, pct)}%`;
+  }
+}
+
+function updateCloudBulkUi() {
+  const count = state.cloudSelection.size;
+  if (elements.cloudBulkDeleteBtn) {
+    elements.cloudBulkDeleteBtn.style.display = count > 0 ? 'inline-flex' : 'none';
+    elements.cloudBulkDeleteBtn.textContent = `DELETE SELECTED (${count})`;
+  }
+  if (elements.cloudSelectAllCheckbox) {
+    elements.cloudSelectAllCheckbox.checked = state.cloudMagnets.length > 0 && count === state.cloudMagnets.length;
+  }
+}
+
 function renderCloudMagnets() {
   const query = elements.cloudSearchInput.value.toLowerCase().trim();
-  const filtered = state.cloudMagnets.filter((m) => !query || (m.filename && m.filename.toLowerCase().includes(query)));
+  const filtered = sortCloudMagnets(
+    state.cloudMagnets.filter((m) => !query || (m.filename && m.filename.toLowerCase().includes(query)))
+  );
 
   elements.cloudCount.textContent = state.cloudMagnets.length;
+  updateCloudUsageBar();
+  updateCloudBulkUi();
+
+  // Drop stale selections
+  for (const id of [...state.cloudSelection]) {
+    if (!state.cloudMagnets.some((m) => m.id === id)) state.cloudSelection.delete(id);
+  }
 
   if (filtered.length === 0) {
     elements.cloudTorrentsList.innerHTML = `
@@ -556,9 +776,13 @@ function renderCloudMagnets() {
       const isDownloading = m.statusCode === 1 || m.status === 'Downloading';
       const progress = isReady ? 100 : (m.size > 0 && typeof m.downloaded === 'number') ? Math.round((m.downloaded / m.size) * 100) : 0;
       const encodedName = encodeURIComponent(m.filename || '');
+      const isSelected = state.cloudSelection.has(m.id);
 
       return `
-        <div class="cloud-card">
+        <div class="cloud-card ${isSelected ? 'selected' : ''}">
+          <label class="cloud-select-box">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleCloudSelect(${m.id})" />
+          </label>
           <div class="cloud-info">
             <div class="cloud-title mono" title="${m.filename || 'Torrent ' + m.id}">${m.filename || 'Torrent #' + m.id}</div>
             <div class="cloud-meta">
@@ -584,13 +808,42 @@ function renderCloudMagnets() {
     .join('');
 }
 
+window.toggleCloudSelect = function (id) {
+  if (state.cloudSelection.has(id)) {
+    state.cloudSelection.delete(id);
+  } else {
+    state.cloudSelection.add(id);
+  }
+  updateCloudBulkUi();
+  renderCloudMagnets();
+};
+
+if (elements.cloudSelectAllCheckbox) {
+  elements.cloudSelectAllCheckbox.onchange = () => {
+    const query = elements.cloudSearchInput.value.toLowerCase().trim();
+    const visible = state.cloudMagnets.filter((m) => !query || (m.filename && m.filename.toLowerCase().includes(query)));
+    state.cloudSelection.clear();
+    if (elements.cloudSelectAllCheckbox.checked) {
+      visible.forEach((m) => state.cloudSelection.add(m.id));
+    }
+    renderCloudMagnets();
+  };
+}
+
+if (elements.cloudSortSelect) {
+  elements.cloudSortSelect.onchange = () => {
+    state.cloudSortMode = elements.cloudSortSelect.value;
+    renderCloudMagnets();
+  };
+}
+
 // ============================================================
 // Actions & Handlers
 // ============================================================
 
 window.openLocalFolder = async function (taskId) {
   try {
-    const res = await fetch(`/api/downloads/${taskId}/open-folder`, { method: 'POST' });
+    const res = await apiFetch(`/api/downloads/${taskId}/open-folder`, { method: 'POST' });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     showToast('Opened destination directory in File Explorer', 'success');
@@ -602,7 +855,7 @@ window.openLocalFolder = async function (taskId) {
 window.manualExtractTask = async function (taskId) {
   try {
     showToast('Initiating archive extraction...', 'info');
-    const res = await fetch(`/api/downloads/${taskId}/extract`, { method: 'POST' });
+    const res = await apiFetch(`/api/downloads/${taskId}/extract`, { method: 'POST' });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     showToast(data.result?.message || 'Archive extracted successfully!', 'success');
@@ -612,23 +865,43 @@ window.manualExtractTask = async function (taskId) {
 };
 
 window.pauseTask = async function (taskId) {
-  await fetch(`/api/downloads/${taskId}/pause`, { method: 'POST' });
+  await apiFetch(`/api/downloads/${taskId}/pause`, { method: 'POST' });
   showToast('Download stream paused', 'info');
 };
 
 window.resumeTask = async function (taskId) {
-  await fetch(`/api/downloads/${taskId}/resume`, { method: 'POST' });
+  await apiFetch(`/api/downloads/${taskId}/resume`, { method: 'POST' });
   showToast('Download stream resumed', 'info');
 };
 
 window.retryTask = async function (taskId) {
-  await fetch(`/api/downloads/${taskId}/retry`, { method: 'POST' });
+  await apiFetch(`/api/downloads/${taskId}/retry`, { method: 'POST' });
   showToast('Retrying failed streams...', 'info');
+};
+
+window.setTaskPriority = async function (taskId, priority) {
+  try {
+    const res = await apiFetch(`/api/downloads/${taskId}/priority`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const t = state.tasks.get(taskId);
+    if (t) {
+      t.priority = data.priority;
+      renderTasks();
+    }
+    showToast(`Queue priority updated`, 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 };
 
 window.cancelTask = async function (taskId) {
   if (confirm('Cancel and delete this task from pipeline?')) {
-    await fetch(`/api/downloads/${taskId}/cancel`, {
+    await apiFetch(`/api/downloads/${taskId}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ deleteFiles: false }),
@@ -639,7 +912,7 @@ window.cancelTask = async function (taskId) {
 
 window.downloadCloudMagnet = async function (magnetId, name = '') {
   try {
-    const res = await fetch(`/api/cloud-magnets/${magnetId}/download`, {
+    const res = await apiFetch(`/api/cloud-magnets/${magnetId}/download`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -657,7 +930,7 @@ window.downloadCloudMagnet = async function (magnetId, name = '') {
 window.deleteCloudMagnet = async function (magnetId) {
   if (confirm('Delete this torrent from your AllDebrid Cloud account?')) {
     try {
-      const res = await fetch(`/api/cloud-magnets/${magnetId}/delete`, { method: 'POST' });
+      const res = await apiFetch(`/api/cloud-magnets/${magnetId}/delete`, { method: 'POST' });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
@@ -668,6 +941,34 @@ window.deleteCloudMagnet = async function (magnetId) {
     }
   }
 };
+
+if (elements.cloudBulkDeleteBtn) {
+  elements.cloudBulkDeleteBtn.onclick = async () => {
+    const ids = Array.from(state.cloudSelection);
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} torrent(s) from your AllDebrid Cloud account? This cannot be undone.`)) return;
+
+    elements.cloudBulkDeleteBtn.disabled = true;
+    try {
+      const res = await apiFetch('/api/cloud-magnets/delete-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      state.cloudSelection.clear();
+      showToast(`Deleted ${data.deletedCount} cloud torrent(s)${data.failed?.length ? `, ${data.failed.length} failed` : ''}`, data.failed?.length ? 'info' : 'success');
+      fetchCloudMagnets();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      elements.cloudBulkDeleteBtn.disabled = false;
+      updateCloudBulkUi();
+    }
+  };
+}
 
 // ============================================================
 // File Tree Viewer Modal
@@ -684,7 +985,7 @@ window.openFileTreeModal = async function (taskId) {
   `;
 
   try {
-    const res = await fetch(`/api/downloads/${taskId}`);
+    const res = await apiFetch(`/api/downloads/${taskId}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -820,7 +1121,7 @@ async function loadDirectory(targetPath = '') {
 
   try {
     const url = targetPath ? `/api/browse-directory?path=${encodeURIComponent(targetPath)}` : '/api/browse-directory';
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -889,7 +1190,7 @@ elements.createFolderBtn.onclick = async () => {
   if (!folderName) return;
 
   try {
-    const res = await fetch('/api/create-directory', {
+    const res = await apiFetch('/api/create-directory', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -957,6 +1258,18 @@ function openDownloadReview(previews) {
   elements.reviewStatusBadge.style.color = primaryItem.isReady ? 'var(--accent-success)' : 'var(--accent-amber)';
 
   elements.reviewOutputDirInput.value = primaryItem.defaultOutputDir;
+
+  // Disk-space pre-flight warning
+  const diskWarning = document.getElementById('reviewDiskWarning');
+  if (diskWarning) {
+    if (primaryItem.fitsOnDisk === false) {
+      const freeStr = primaryItem.freeSpaceBytes != null ? formatBytes(primaryItem.freeSpaceBytes) : 'unknown';
+      diskWarning.innerHTML = `⚠ LOW DISK SPACE — task needs <strong>${formatBytes(primaryItem.totalSize)}</strong> but only <strong>${freeStr}</strong> is free at the destination volume. Consider another drive.`;
+      diskWarning.style.display = 'block';
+    } else {
+      diskWarning.style.display = 'none';
+    }
+  }
 
   // Detect if archives exist in the preview files
   const hasArchiveFiles = !!primaryItem.hasArchives || (primaryItem.flattenedFiles && primaryItem.flattenedFiles.some((f) => /\.(rar|zip|7z|tar|gz|r\d{2}|part\d+\.rar)$/i.test(f.name)));
@@ -1128,7 +1441,7 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
   }));
 
   try {
-    const res = await fetch('/api/downloads/add', {
+    const res = await apiFetch('/api/downloads/add', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: itemsPayload }),
@@ -1170,7 +1483,7 @@ elements.submitAddBtn.onclick = async () => {
   elements.submitAddBtn.textContent = 'ANALYZING TOPOLOGY...';
 
   try {
-    const res = await fetch('/api/downloads/preview', {
+    const res = await apiFetch('/api/downloads/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input }),
@@ -1254,7 +1567,7 @@ elements.submitUploadBtn.onclick = async () => {
   elements.submitUploadBtn.textContent = 'INSPECTING TORRENT...';
 
   try {
-    const res = await fetch('/api/downloads/preview', {
+    const res = await apiFetch('/api/downloads/preview', {
       method: 'POST',
       body: formData,
     });
@@ -1297,10 +1610,22 @@ elements.settingsForm.onsubmit = async (e) => {
     newMaxConcurrent: parseInt(elements.maxConcurrentRange.value, 10),
     newJackettUrl: elements.jackettUrlInput ? elements.jackettUrlInput.value.trim() : '',
     newJackettApiKey: elements.jackettApiKeyInput ? elements.jackettApiKeyInput.value.trim() : '',
+    newSpeedLimitKbps: parseInt(elements.speedLimitInput?.value, 10) || 0,
+    newMaxRetries: parseInt(elements.maxRetriesInput?.value, 10) || 0,
+    newMinFreeGb: parseFloat(elements.minFreeGbInput?.value) || 0,
+    newScheduleEnabled: elements.scheduleEnabledCheckbox?.checked || false,
+    newScheduleStart: elements.scheduleStartInput?.value.trim() || '',
+    newScheduleEnd: elements.scheduleEndInput?.value.trim() || '',
+    newScheduleLimitKbps: parseInt(elements.scheduleLimitInput?.value, 10) || 0,
   };
 
+  const newToken = elements.authTokenInput?.value.trim();
+  if (newToken) {
+    payload.newAuthToken = newToken;
+  }
+
   try {
-    const res = await fetch('/api/settings', {
+    const res = await apiFetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -1309,12 +1634,32 @@ elements.settingsForm.onsubmit = async (e) => {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    showToast('Configuration persisted successfully!', 'success');
+    if (newToken) {
+      storeToken(newToken);
+      if (elements.authTokenInput) elements.authTokenInput.value = '';
+      showToast('Access token saved. Keep it safe — required for all API access.', 'success');
+    } else {
+      showToast('Configuration persisted successfully!', 'success');
+    }
     fetchStatus();
   } catch (err) {
     showToast(err.message, 'error');
   }
 };
+
+function syncScheduleFieldsState() {
+  const enabled = elements.scheduleEnabledCheckbox?.checked;
+  for (const el of [elements.scheduleStartInput, elements.scheduleEndInput, elements.scheduleLimitInput]) {
+    if (el) {
+      el.disabled = !enabled;
+      el.style.opacity = enabled ? '1' : '0.4';
+    }
+  }
+}
+
+if (elements.scheduleEnabledCheckbox) {
+  elements.scheduleEnabledCheckbox.onchange = syncScheduleFieldsState;
+}
 
 elements.testApiBtn.onclick = async () => {
   elements.testApiBtn.disabled = true;
@@ -1323,14 +1668,14 @@ elements.testApiBtn.onclick = async () => {
   try {
     // If user entered a key in input, save it first
     if (elements.apiKeyInput.value.trim()) {
-      await fetch('/api/settings', {
+      await apiFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newApiKey: elements.apiKeyInput.value.trim() }),
       });
     }
 
-    const res = await fetch('/api/status');
+    const res = await apiFetch('/api/status');
     const data = await res.json();
 
     if (data.userInfo) {
@@ -1381,7 +1726,7 @@ async function performSearch() {
 
   try {
     const url = `/api/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}&onlyCached=${onlyCached}`;
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -1494,7 +1839,7 @@ window.dispatchSearchDownload = async function (magnetUri, title) {
   showToast(`Inspecting topology for "${title || 'Release'}"...`, 'info');
 
   try {
-    const res = await fetch('/api/downloads/preview', {
+    const res = await apiFetch('/api/downloads/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input: magnetUri }),
@@ -1515,7 +1860,7 @@ window.dispatchSearchDownload = async function (magnetUri, title) {
 window.saveSearchToCloud = async function (magnetUri, title) {
   if (!magnetUri) return;
   try {
-    const res = await fetch('/api/downloads/add', {
+    const res = await apiFetch('/api/downloads/add', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input: magnetUri }),
@@ -1604,7 +1949,7 @@ if (elements.runBatchCacheCheckBtn) {
     elements.runBatchCacheCheckBtn.textContent = 'QUERYING CLOUD CACHE...';
 
     try {
-      const res = await fetch('/api/magnet/check-cache', {
+      const res = await apiFetch('/api/magnet/check-cache', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ magnets: text }),
@@ -1667,6 +2012,18 @@ elements.completedSearchInput.oninput = renderTasks;
 elements.cloudSearchInput.oninput = renderCloudMagnets;
 elements.refreshCloudBtn.onclick = fetchCloudMagnets;
 
-// Initial Bootstrap
-connectWebSocket();
-fetchStatus();
+// Initial Bootstrap: verify access gate before hitting protected APIs
+(async function bootstrap() {
+  try {
+    const res = await fetch('/api/auth-check', {
+      headers: getStoredToken() ? { Authorization: `Bearer ${getStoredToken()}` } : {},
+    });
+    const data = await res.json();
+    if (data.authRequired && !data.tokenValid) {
+      showTokenModal();
+      return;
+    }
+  } catch {}
+  connectWebSocket();
+  fetchStatus();
+})();

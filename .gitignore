@@ -22,6 +22,8 @@ temp/
 # Logs & runtime data
 logs/
 *.log
+state.json
+state.json.tmp
 
 # OS Generated Files
 .DS_Store

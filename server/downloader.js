@@ -10,24 +10,102 @@ import { pipeline } from 'stream/promises';
 import { flattenFileTree, sanitizePathSegment, normalizeMagnetResponse } from './alldebrid.js';
 import { extractTaskArchives, isArchiveFile } from './extractor.js';
 
+/**
+ * Shared token-bucket bandwidth limiter.
+ * limit = bytes per second, 0 = unlimited. FIFO-fair across all streams.
+ */
+class SpeedLimiter {
+  constructor() {
+    this.limit = 0;
+    this.tokens = 0;
+    this.waiters = [];
+    this._timer = setInterval(() => this._refill(), 100);
+    if (this._timer.unref) this._timer.unref();
+  }
+
+  setLimit(bytesPerSec) {
+    const next = Math.max(0, Number(bytesPerSec) || 0);
+    if (next === this.limit) return;
+    this.limit = next;
+    if (next === 0) this.tokens = 0;
+    this._wake();
+  }
+
+  _refill() {
+    if (this.limit <= 0) return;
+    this.tokens = Math.min(this.limit, this.tokens + this.limit * 0.1);
+    this._wake();
+  }
+
+  _wake() {
+    if (this.limit <= 0) {
+      this.waiters.splice(0).forEach((w) => w.resolve());
+      return;
+    }
+    while (this.waiters.length > 0 && this.tokens >= this.waiters[0].bytes) {
+      const w = this.waiters.shift();
+      this.tokens -= w.bytes;
+      w.resolve();
+    }
+  }
+
+  consume(bytes) {
+    if (this.limit <= 0) return Promise.resolve();
+    if (bytes > this.limit) bytes = this.limit;
+    return new Promise((resolve) => {
+      if (this.waiters.length === 0 && this.tokens >= bytes) {
+        this.tokens -= bytes;
+        resolve();
+      } else {
+        this.waiters.push({ bytes, resolve });
+      }
+    });
+  }
+
+  destroy() {
+    clearInterval(this._timer);
+    this.waiters.splice(0).forEach((w) => w.resolve());
+  }
+}
+
+function localDayKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export class DownloadEngine extends EventEmitter {
   constructor(alldebridClient, options = {}) {
     super();
     this.client = alldebridClient;
     this.downloadDir = path.resolve(options.downloadDir || './downloads');
     this.maxConcurrent = options.maxConcurrent || 3;
+    this.maxRetries = Math.max(0, Number(options.maxRetries ?? 3) || 0);
+    this.retryBackoffMs = Array.isArray(options.retryBackoffMs) && options.retryBackoffMs.length > 0
+      ? options.retryBackoffMs
+      : [30_000, 120_000, 600_000];
+    this.persistence = options.persistence || null;
     this.tasks = new Map(); // taskId -> Task
     this.activeFileStreams = new Map(); // fileId -> { abortController, writeStream }
+    this.speedLimiter = new SpeedLimiter();
     this.pollInterval = null;
     this.speedTrackerInterval = null;
+    this.persistSweepInterval = null;
+    this.stats = { totalBytes: 0, activeSeconds: 0, peakSpeed: 0, perDay: {} };
 
     this.ensureDownloadDir();
+    this.restoreFromPersistence();
     this.startBackgroundLoops();
   }
 
   ensureDownloadDir() {
-    if (!fs.existsSync(this.downloadDir)) {
-      fs.mkdirSync(this.downloadDir, { recursive: true });
+    try {
+      if (!fs.existsSync(this.downloadDir)) {
+        fs.mkdirSync(this.downloadDir, { recursive: true });
+      }
+    } catch (err) {
+      console.warn(`[Engine] Cannot create download dir "${this.downloadDir}": ${err.message}. Downloads to it will fail until available.`);
     }
   }
 
@@ -41,17 +119,174 @@ export class DownloadEngine extends EventEmitter {
     this.processQueue();
   }
 
+  setSpeedLimit(bytesPerSec) {
+    this.speedLimiter.setLimit(bytesPerSec);
+  }
+
+  setMaxRetries(num) {
+    this.maxRetries = Math.max(0, Number(num) || 0);
+  }
+
   startBackgroundLoops() {
     // Speed and ETA recalculator loop (every 1 second)
     this.speedTrackerInterval = setInterval(() => {
       this.recalculateSpeeds();
       this.emit('progress');
     }, 1000);
+    if (this.speedTrackerInterval.unref) this.speedTrackerInterval.unref();
 
     // Cloud magnet status poller loop (every 3 seconds)
     this.pollInterval = setInterval(() => {
       this.pollCloudMagnets();
     }, 3000);
+    if (this.pollInterval.unref) this.pollInterval.unref();
+
+    // Persistence sweep: capture stats + any missed task mutations (every 30 seconds)
+    this.persistSweepInterval = setInterval(() => {
+      this._persist();
+    }, 30_000);
+    if (this.persistSweepInterval.unref) this.persistSweepInterval.unref();
+  }
+
+  // ==========================================
+  // Persistence
+  // ==========================================
+
+  _persist() {
+    if (!this.persistence) return;
+    try {
+      this.persistence.data.tasks = Array.from(this.tasks.values()).map((t) => this.serializeTask(t));
+      this.persistence.data.stats = { ...this.stats, perDay: { ...this.stats.perDay } };
+      this.persistence.scheduleFlush();
+    } catch (err) {
+      console.error('[Engine] Persist failed:', err.message);
+    }
+  }
+
+  flushPersistenceSync() {
+    if (!this.persistence) return;
+    this._persist();
+    this.persistence.flushSync();
+  }
+
+  serializeTask(task) {
+    let status = task.status;
+    if (status === 'downloading' || status === 'extracting' || status === 'initializing') {
+      status = task.magnetId && task.files.length === 0 ? 'waiting_cloud' : 'ready_to_download';
+    }
+    return {
+      id: task.id,
+      magnetId: task.magnetId,
+      name: task.name,
+      type: task.type,
+      status,
+      cloudStatus: task.cloudStatus,
+      cloudProgress: task.cloudProgress,
+      totalSize: task.totalSize,
+      downloadedSize: task.downloadedSize,
+      progress: task.progress,
+      error: task.error,
+      outputDir: task.outputDir,
+      baseOutputDir: task.baseOutputDir,
+      selectedPaths: task.selectedPaths ? Array.from(task.selectedPaths) : null,
+      autoExtract: !!task.autoExtract,
+      deleteArchiveAfterExtract: !!task.deleteArchiveAfterExtract,
+      extractionStatus: task.extractionStatus,
+      extractionError: task.extractionError,
+      extractionMessage: task.extractionMessage,
+      extracted: !!task.extracted,
+      addedAt: task.addedAt,
+      completedAt: task.completedAt,
+      priority: task.priority ?? 1,
+      files: (task.files || []).map((f) => ({
+        id: f.id,
+        taskId: f.taskId,
+        name: f.name,
+        relativePath: f.relativePath,
+        fullLocalPath: f.fullLocalPath,
+        size: f.size,
+        downloaded: f.downloaded,
+        link: f.link || null,
+        status: f.status === 'completed' ? 'completed' : 'pending',
+        error: f.error,
+        progress: f.progress,
+        retryCount: f.retryCount || 0,
+      })),
+    };
+  }
+
+  restoreFromPersistence() {
+    if (!this.persistence) return;
+    const savedTasks = this.persistence.data.tasks || [];
+    for (const s of savedTasks) {
+      try {
+        const task = {
+          ...s,
+          selectedPaths: Array.isArray(s.selectedPaths) ? new Set(s.selectedPaths) : null,
+          isExtracting: false,
+          speed: 0,
+          eta: 0,
+          priority: s.priority ?? 1,
+          // Direct URLs expire server-side; force re-unlock on resume
+          files: (s.files || []).map((f) => ({
+            ...f,
+            directUrl: null,
+            speed: 0,
+            bytesSample: 0,
+            retryAt: null,
+            retryCount: f.retryCount || 0,
+          })),
+        };
+
+        if (task.status !== 'completed') {
+          // Keep waiting_cloud so the background poller re-syncs magnet state;
+          // everything else resumes locally from disk.
+          if (task.status !== 'waiting_cloud') {
+            task.status = 'ready_to_download';
+          }
+          for (const f of task.files) {
+            if (f.status !== 'completed') {
+              f.status = 'pending';
+              f.error = null;
+            }
+          }
+        }
+
+        this.tasks.set(task.id, task);
+      } catch (err) {
+        console.error(`[Engine] Failed to restore task ${s?.id}:`, err.message);
+      }
+    }
+
+    if (this.tasks.size > 0) {
+      // Re-scan disk so partial/complete files are detected before queueing
+      for (const task of this.tasks.values()) {
+        for (const f of task.files) this.checkExistingFileSize(f);
+        this.updateTaskProgress(task);
+      }
+      console.log(`[Engine] Restored ${this.tasks.size} task(s) from previous session.`);
+    }
+
+    const savedStats = this.persistence.data.stats;
+    if (savedStats) {
+      this.stats = {
+        totalBytes: savedStats.totalBytes || 0,
+        activeSeconds: savedStats.activeSeconds || 0,
+        peakSpeed: savedStats.peakSpeed || 0,
+        perDay: { ...(savedStats.perDay || {}) },
+      };
+    }
+  }
+
+  getStats() {
+    const dayKey = localDayKey();
+    return {
+      totalBytes: this.stats.totalBytes,
+      activeSeconds: this.stats.activeSeconds,
+      peakSpeed: this.stats.peakSpeed,
+      todayBytes: this.stats.perDay[dayKey] || 0,
+      dayKey,
+    };
   }
 
   /**
@@ -98,11 +333,13 @@ export class DownloadEngine extends EventEmitter {
       isExtracting: false,
       addedAt: new Date().toISOString(),
       completedAt: null,
+      priority: Number.isInteger(options.priority) ? Math.min(2, Math.max(0, options.priority)) : 1,
       files: [],
     };
 
     this.tasks.set(taskId, task);
     this.emit('taskAdded', task);
+    this._persist();
 
     // If files tree is provided, setup files right away
     if (initialFilesTree && initialFilesTree.length > 0) {
@@ -159,6 +396,7 @@ export class DownloadEngine extends EventEmitter {
       isExtracting: false,
       addedAt: new Date().toISOString(),
       completedAt: null,
+      priority: Number.isInteger(options.priority) ? Math.min(2, Math.max(0, options.priority)) : 1,
       files: [],
     };
 
@@ -168,10 +406,9 @@ export class DownloadEngine extends EventEmitter {
       : files;
 
     if (filteredFiles.length === 0) {
-      task.status = 'error';
-      task.error = 'No files selected for folder download';
       this.tasks.set(taskId, task);
       this.emit('taskAdded', task);
+      this.markTaskError(task, 'No files selected for folder download');
       return task;
     }
 
@@ -198,6 +435,8 @@ export class DownloadEngine extends EventEmitter {
         speed: 0,
         bytesSample: 0,
         progress: 0,
+        retryCount: 0,
+        retryAt: null,
       };
 
       this.checkExistingFileSize(fObj);
@@ -209,6 +448,7 @@ export class DownloadEngine extends EventEmitter {
 
     this.tasks.set(taskId, task);
     this.emit('taskAdded', task);
+    this._persist();
     this.updateTaskProgress(task);
     this.processQueue();
     return task;
@@ -245,11 +485,13 @@ export class DownloadEngine extends EventEmitter {
       isExtracting: false,
       addedAt: new Date().toISOString(),
       completedAt: null,
+      priority: Number.isInteger(options.priority) ? Math.min(2, Math.max(0, options.priority)) : 1,
       files: [],
     };
 
     this.tasks.set(taskId, task);
     this.emit('taskAdded', task);
+    this._persist();
 
     try {
       // Unlock link to get metadata
@@ -273,6 +515,8 @@ export class DownloadEngine extends EventEmitter {
         speed: 0,
         bytesSample: 0,
         progress: 0,
+        retryCount: 0,
+        retryAt: null,
       };
 
       task.files = [fileObj];
@@ -280,8 +524,7 @@ export class DownloadEngine extends EventEmitter {
       task.status = 'ready_to_download';
       this.checkExistingFileSize(fileObj);
     } catch (err) {
-      task.status = 'error';
-      task.error = err.message || 'Failed to unlock direct link';
+      this.markTaskError(task, err.message || 'Failed to unlock direct link');
     }
 
     this.processQueue();
@@ -294,8 +537,7 @@ export class DownloadEngine extends EventEmitter {
   setupTaskFiles(task, filesTree) {
     const flatList = flattenFileTree(filesTree);
     if (flatList.length === 0) {
-      task.status = 'error';
-      task.error = 'No downloadable files found in this torrent';
+      this.markTaskError(task, 'No downloadable files found in this torrent');
       return;
     }
 
@@ -328,8 +570,7 @@ export class DownloadEngine extends EventEmitter {
       : flatList;
 
     if (filteredList.length === 0) {
-      task.status = 'error';
-      task.error = 'No files selected for download';
+      this.markTaskError(task, 'No files selected for download');
       return;
     }
 
@@ -355,6 +596,8 @@ export class DownloadEngine extends EventEmitter {
         speed: 0,
         bytesSample: 0,
         progress: 0,
+        retryCount: 0,
+        retryAt: null,
       };
 
       this.checkExistingFileSize(fObj);
@@ -435,18 +678,29 @@ export class DownloadEngine extends EventEmitter {
             return;
           }
         } else if (mStatus.statusCode >= 5) {
-          task.status = 'error';
-          task.error = `Cloud torrent error: ${mStatus.status || 'Failed'}`;
+          this.markTaskError(task, `Cloud torrent error: ${mStatus.status || 'Failed'}`);
         } else {
           task.status = 'waiting_cloud';
         }
       }
     } catch (err) {
       if (task.status === 'initializing') {
-        task.status = 'error';
-        task.error = err.message || 'Failed to query AllDebrid for magnet';
+        this.markTaskError(task, err.message || 'Failed to query AllDebrid for magnet');
       }
     }
+  }
+
+  /**
+   * Mark a task as errored; emits taskError only on transition into the error state
+   */
+  markTaskError(task, message) {
+    const wasError = task.status === 'error';
+    task.status = 'error';
+    task.error = message;
+    if (!wasError) {
+      this.emit('taskError', task);
+    }
+    this._persist();
   }
 
   /**
@@ -467,20 +721,27 @@ export class DownloadEngine extends EventEmitter {
   }
 
   /**
-   * Main Queue Processor: schedules file downloads based on concurrency limit
+   * Main Queue Processor: schedules file downloads based on concurrency limit.
+   * Tasks are scheduled by priority (0=high..2=low), then by insertion order.
    */
   async processQueue() {
     let runningCount = this.activeFileStreams.size;
     if (runningCount >= this.maxConcurrent) return;
 
+    const orderedTasks = Array.from(this.tasks.values()).sort(
+      (a, b) => (a.priority ?? 1) - (b.priority ?? 1) || String(a.addedAt).localeCompare(String(b.addedAt))
+    );
+
     // Find candidate files that are 'pending' from active or ready tasks
-    for (const task of this.tasks.values()) {
+    for (const task of orderedTasks) {
       if (['paused', 'error', 'completed', 'waiting_cloud'].includes(task.status)) {
         continue;
       }
 
       let allFilesDone = true;
       let hasDownloading = false;
+      let hasSchedulable = false;
+      let firstError = null;
 
       for (const file of task.files) {
         if (file.status === 'completed') {
@@ -493,6 +754,10 @@ export class DownloadEngine extends EventEmitter {
         } else if (file.status === 'pending') {
           allFilesDone = false;
 
+          // Files waiting out an auto-retry backoff window are not schedulable yet
+          if (file.retryAt && file.retryAt > Date.now()) continue;
+          hasSchedulable = true;
+
           if (runningCount < this.maxConcurrent) {
             runningCount++;
             task.status = 'downloading';
@@ -502,15 +767,27 @@ export class DownloadEngine extends EventEmitter {
           }
         } else if (file.status === 'error' || file.status === 'paused') {
           allFilesDone = false;
+          if (file.status === 'error' && !firstError) firstError = file.error;
         }
       }
 
       this.updateTaskProgress(task);
 
-      if (allFilesDone && task.files.length > 0 && task.status !== 'completed' && task.status !== 'extracting') {
-        this.handleTaskCompletion(task);
+      // Terminal error state: nothing running/schedulable but failed files remain
+      if (
+        !allFilesDone &&
+        !hasDownloading &&
+        !hasSchedulable &&
+        firstError &&
+        !['error', 'paused', 'completed', 'waiting_cloud', 'extracting'].includes(task.status)
+      ) {
+        this.markTaskError(task, firstError);
       } else if (hasDownloading) {
         task.status = 'downloading';
+      }
+
+      if (allFilesDone && task.files.length > 0 && task.status !== 'completed' && task.status !== 'extracting') {
+        this.handleTaskCompletion(task);
       }
     }
   }
@@ -552,6 +829,7 @@ export class DownloadEngine extends EventEmitter {
       task.completedAt = new Date().toISOString();
       this.emit('taskCompleted', task);
     }
+    this._persist();
   }
 
   /**
@@ -671,14 +949,44 @@ export class DownloadEngine extends EventEmitter {
         // Paused or cancelled by user
         if (file.status !== 'paused') file.status = 'pending';
       } else {
-        file.status = 'error';
-        file.error = err.message || 'Download failed';
-        console.error(`Error downloading ${file.name}:`, err);
+        this.handleFileFailure(task, file, err);
       }
     } finally {
       this.activeFileStreams.delete(file.id);
       this.updateTaskProgress(task);
       this.processQueue();
+    }
+  }
+
+  /**
+   * Handles a failed file stream: auto-retries with exponential backoff until
+   * maxRetries is exhausted, then leaves the file in a terminal error state.
+   */
+  handleFileFailure(task, file, err) {
+    const message = err?.message || 'Download failed';
+    const attempts = (file.retryCount || 0) + 1;
+
+    if (attempts <= this.maxRetries) {
+      const delay = this.retryBackoffMs[Math.min(attempts - 1, this.retryBackoffMs.length - 1)];
+      file.retryCount = attempts;
+      file.status = 'pending';
+      file.retryAt = Date.now() + delay;
+      file.error = `${message} (retry ${attempts}/${this.maxRetries} in ${Math.round(delay / 1000)}s)`;
+      console.warn(`[Engine] ${file.name} failed (${message}). Auto-retry ${attempts}/${this.maxRetries} in ${delay}ms`);
+
+      setTimeout(() => {
+        if (!this.tasks.has(task.id)) return;
+        if (file.status !== 'pending' || !file.retryAt) return;
+        if (task.status === 'paused') return;
+        file.retryAt = null;
+        file.directUrl = null; // cached unlock URLs may have expired
+        this.processQueue();
+      }, delay);
+    } else {
+      file.status = 'error';
+      file.error = message;
+      file.retryAt = null;
+      console.error(`[Engine] ${file.name} failed permanently after ${attempts - 1} retries: ${message}`);
     }
   }
 
@@ -696,11 +1004,22 @@ export class DownloadEngine extends EventEmitter {
     const nodeReadable = Readable.fromWeb(response.body);
 
     const progressTransform = new Transform({
-      transform(chunk, encoding, callback) {
-        file.downloaded += chunk.length;
-        file.bytesSample += chunk.length;
-        file.progress = file.size > 0 ? Math.min(100, Math.round((file.downloaded / file.size) * 100)) : 0;
-        callback(null, chunk);
+      transform: (chunk, encoding, callback) => {
+        this.speedLimiter.consume(chunk.length).then(
+          () => {
+            file.downloaded += chunk.length;
+            file.bytesSample += chunk.length;
+            file.progress = file.size > 0 ? Math.min(100, Math.round((file.downloaded / file.size) * 100)) : 0;
+
+            // Usage statistics: count bytes as they hit the wire
+            this.stats.totalBytes += chunk.length;
+            const dayKey = localDayKey();
+            this.stats.perDay[dayKey] = (this.stats.perDay[dayKey] || 0) + chunk.length;
+
+            callback(null, chunk);
+          },
+          (err) => callback(err)
+        );
       },
     });
 
@@ -711,6 +1030,9 @@ export class DownloadEngine extends EventEmitter {
 
       file.status = 'completed';
       file.progress = 100;
+      file.retryCount = 0;
+      file.retryAt = null;
+      this._persist();
     } catch (err) {
       if (abortController.signal.aborted) {
         // Aborted cleanly by pause or cancel
@@ -754,8 +1076,16 @@ export class DownloadEngine extends EventEmitter {
       }
     }
 
-    this.totalSpeed = totalActiveSpeed;
-  }
+      this.totalSpeed = totalActiveSpeed;
+
+      // Activity statistics: active seconds + peak throughput
+      if (totalActiveSpeed > 0) {
+        this.stats.activeSeconds += 1;
+        if (totalActiveSpeed > this.stats.peakSpeed) {
+          this.stats.peakSpeed = totalActiveSpeed;
+        }
+      }
+    }
 
   updateTaskProgress(task) {
     let totalDownloaded = 0;
@@ -796,11 +1126,26 @@ export class DownloadEngine extends EventEmitter {
         }
       } else if (file.status === 'pending') {
         file.status = 'paused';
+        file.retryAt = null;
       }
     }
 
     this.emit('taskUpdated', task);
+    this._persist();
     return true;
+  }
+
+  /**
+   * Pause every actively running / queued task (disk guard, manual panic button)
+   */
+  pauseAll() {
+    let count = 0;
+    for (const task of this.tasks.values()) {
+      if (['downloading', 'ready_to_download', 'waiting_cloud'].includes(task.status)) {
+        if (this.pauseTask(task.id)) count++;
+      }
+    }
+    return count;
   }
 
   /**
@@ -817,12 +1162,15 @@ export class DownloadEngine extends EventEmitter {
         if (file.status === 'paused' || file.status === 'error') {
           file.status = 'pending';
           file.error = null;
+          file.retryCount = 0;
+          file.retryAt = null;
         }
       }
     }
 
     this.updateTaskProgress(task);
     this.emit('taskUpdated', task);
+    this._persist();
     this.processQueue();
     return true;
   }
@@ -842,11 +1190,29 @@ export class DownloadEngine extends EventEmitter {
         file.status = 'pending';
         file.error = null;
         file.directUrl = null; // Clear cached URL to re-unlock
+        file.retryCount = 0;
+        file.retryAt = null;
       }
     }
 
     this.updateTaskProgress(task);
     this.emit('taskUpdated', task);
+    this._persist();
+    this.processQueue();
+    return true;
+  }
+
+  /**
+   * Update queue priority of a task (0=high, 1=normal, 2=low)
+   */
+  setTaskPriority(taskId, priority) {
+    const task = this.tasks.get(taskId);
+    if (!task) return false;
+    const p = parseInt(priority, 10);
+    if (Number.isNaN(p)) return false;
+    task.priority = Math.min(2, Math.max(0, p));
+    this.emit('taskUpdated', task);
+    this._persist();
     this.processQueue();
     return true;
   }
@@ -878,6 +1244,7 @@ export class DownloadEngine extends EventEmitter {
 
     this.tasks.delete(taskId);
     this.emit('taskDeleted', taskId);
+    this._persist();
     this.processQueue();
     return true;
   }
@@ -910,6 +1277,9 @@ export class DownloadEngine extends EventEmitter {
       isExtracting: !!task.isExtracting,
       addedAt: task.addedAt,
       completedAt: task.completedAt,
+      priority: task.priority ?? 1,
+      retryingCount: task.files.filter((f) => f.status === 'pending' && f.retryAt && f.retryAt > Date.now()).length,
+      nextRetryAt: task.files.reduce((min, f) => (f.retryAt && (!min || f.retryAt < min) ? f.retryAt : min), null),
       fileCount: task.files.length,
       completedFileCount: task.files.filter((f) => f.status === 'completed').length,
     }));

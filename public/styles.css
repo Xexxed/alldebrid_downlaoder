@@ -963,6 +963,193 @@ body.hpc-theme {
   gap: 8px;
 }
 
+/* Cloud manager: selection, sort, usage bar */
+.cloud-toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cloud-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cloud-sort-select {
+  width: auto;
+  min-width: 140px;
+  padding: 6px 10px;
+  font-size: 0.6875rem;
+}
+
+.cloud-select-box {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.cloud-select-box input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent-electric);
+  cursor: pointer;
+}
+
+.cloud-card.selected {
+  border-color: rgba(0, 191, 255, 0.45);
+  background: var(--accent-electric-dim);
+}
+
+.cloud-usage-strip {
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cloud-usage-track {
+  height: 4px;
+  background: var(--bg-card-hover);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.cloud-usage-fill {
+  height: 100%;
+  width: 2%;
+  background: linear-gradient(90deg, var(--accent-electric), var(--accent-success));
+  border-radius: 999px;
+  transition: var(--transition-fast);
+}
+
+.cloud-usage-text {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+/* Task card priority controls */
+.priority-controls {
+  display: inline-flex;
+  gap: 3px;
+  margin-right: 8px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius);
+}
+
+.btn-priority {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: calc(var(--radius) - 3px);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-priority:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.btn-priority.active.p-0 {
+  color: #000;
+  background: var(--accent-primary);
+  box-shadow: 0 0 8px rgba(237, 28, 36, 0.5);
+}
+
+.btn-priority.active.p-1 {
+  color: #000;
+  background: var(--accent-amber);
+}
+
+.btn-priority.active.p-2 {
+  color: #000;
+  background: var(--accent-success);
+}
+
+/* Settings extras */
+.settings-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.hpc-checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.hpc-checkbox-inline input[type='checkbox'] {
+  accent-color: var(--accent-electric);
+  width: 14px;
+  height: 14px;
+}
+
+.schedule-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.stats-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.stat-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius);
+}
+
+.stat-val {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--accent-electric);
+}
+
+.stat-label {
+  font-size: 0.5625rem;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+/* Review modal disk warning */
+.disk-warning-banner {
+  display: block;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: var(--accent-amber-dim);
+  border: 1px solid rgba(255, 176, 32, 0.4);
+  border-radius: var(--radius);
+  color: var(--accent-amber);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
 /* ============================================================
    Modals & Glassmorphic Overlays (z-index 300)
    ============================================================ */

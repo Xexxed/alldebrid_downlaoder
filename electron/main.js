@@ -343,6 +343,23 @@ function setupEngineListeners() {
     }
   });
 
+  engine.on('diskWarning', (info) => {
+    if (Notification.isSupported()) {
+      const notif = new Notification({
+        title: '⚠️ Low Disk Space',
+        body: info?.message || 'Downloads were paused because the destination drive is running low on space.',
+        icon: getAppIcon(),
+      });
+      notif.on('click', () => {
+        if (mainWindow) {
+          if (!mainWindow.isVisible()) mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+      notif.show();
+    }
+  });
+
   engine.on('taskAdded', () => updateTrayMenu());
   engine.on('taskDeleted', () => updateTrayMenu());
 }

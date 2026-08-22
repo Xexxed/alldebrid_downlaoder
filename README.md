@@ -44,9 +44,17 @@ A modern, full-featured, and self-hosted torrent, file hoster, and cloud downloa
 
 ### ⚡ High-Performance Computing (HPC) Architecture
 * **Stream-Based Range Resuming**: HTTP `Range` request resuming prevents redownloading upon interruptions.
+* **Durable Task Queue**: Active and completed tasks persist to disk (`state.json`) and are automatically restored — including partial byte offsets — across app restarts.
+* **Global Speed Limiter**: Token-bucket bandwidth ceiling shared across all concurrent streams, configurable in KB/s.
+* **Auto-Retry with Backoff**: Transient file failures automatically retry (30s → 2m → 10m) with unlock URL refresh before being marked failed.
+* **Queue Priorities**: High/Normal/Low priority per task; the scheduler dispatches high-priority files first.
 * **Mechanical Drive Protection**: Tuned backpressure buffers (512KB chunks) for smooth sequential writes on external USB HDDs and fast SSDs.
 * **Configurable Concurrency**: Tune worker streams (1–10 streams) directly from the settings panel.
 * **Live WebSocket Telemetry**: Real-time throughput metrics, progress ticks, ETA recalculations, and per-file progress streamed to the frontend.
+* **Disk Space Guard**: Pre-flight free-space check in the review modal plus a runtime watchdog that auto-pauses all tasks when the destination drive runs low.
+* **Off-Peak Bandwidth Schedule**: Daily time window that overrides the global speed limit (e.g. full speed at night).
+* **Usage Statistics**: All-time + daily downloaded bytes, peak throughput, and active time, persisted locally.
+* **Access Token Protection**: Optional `AUTH_TOKEN` locks every API/WebSocket endpoint; server binds `127.0.0.1` by default (opt-in LAN exposure via `HOST`).
 
 ### 🖥️ Futuristic Cyberpunk Web Interface
 * **HPC Dashboard**: Modern glassmorphic dark theme, live throughput speedometer, status pills, and search filters.
@@ -113,10 +121,24 @@ ALLDEBRID_API_KEY=your_alldebrid_api_key_here
 
 # Server Configuration
 PORT=3000
+# Bind address (127.0.0.1 = local only; 0.0.0.0 exposes to LAN — set AUTH_TOKEN!)
+HOST=127.0.0.1
 
 # Download Settings
 DOWNLOAD_DIR=./downloads
 MAX_CONCURRENT_DOWNLOADS=3
+SPEED_LIMIT_KBPS=0        # global bandwidth ceiling, 0 = unlimited
+MAX_RETRIES=3             # auto-retry attempts per file
+MIN_FREE_GB=5             # auto-pause all downloads below this free space
+
+# Access Protection (when set, all API/WebSocket calls require this token)
+AUTH_TOKEN=
+
+# Off-peak bandwidth schedule
+SCHEDULE_ENABLED=0
+SCHEDULE_START=23:00
+SCHEDULE_END=07:00
+SCHEDULE_LIMIT_KBPS=0
 ```
 
 > **Note**: You can also configure your API key and download directory directly within the UI under the **Engine Config** tab.
@@ -201,9 +223,12 @@ Open your browser at `http://localhost:3000` (or enjoy the native desktop window
 | `POST` | `/api/downloads/:id/cancel` | Cancel and delete task (with optional disk deletion). |
 | `POST` | `/api/downloads/:id/open-folder` | Open task directory in OS File Explorer (Windows/macOS/Linux). |
 | `POST` | `/api/downloads/:id/extract` | Manually trigger archive extraction on a completed task. |
+| `POST` | `/api/downloads/:id/priority` | Set queue priority (0=high, 1=normal, 2=low). |
+| `GET` | `/api/stats` | Lifetime + today download statistics. |
 | `GET` | `/api/cloud-magnets` | List torrents cached in AllDebrid cloud storage. |
 | `POST` | `/api/cloud-magnets/:id/download` | Queue a cloud torrent directly to local disk. |
 | `POST` | `/api/cloud-magnets/:id/delete` | Delete a torrent from AllDebrid cloud account. |
+| `POST` | `/api/cloud-magnets/delete-bulk` | Bulk delete cloud magnets by `ids[]`. |
 | `GET` | `/api/search` | Multi-indexer release search with AllDebrid instant cache telemetry. |
 | `POST` | `/api/magnet/check-cache` | Batch inspect magnet links and infohashes for cloud availability. |
 | `GET` | `/api/browse-directory` | Browse local filesystem directories. |

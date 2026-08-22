@@ -10,7 +10,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import multer from 'multer';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import dotenv from 'dotenv';
 
 import os from 'os';
@@ -19,6 +19,7 @@ import { AllDebridClient, parseDownloadInput, flattenFileTree, sanitizePathSegme
 import { isArchiveFile } from './extractor.js';
 import { DownloadEngine } from './downloader.js';
 import { searchAggregator, extractHashFromMagnet } from './search.js';
+import { Persistence } from './persistence.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,9 +39,14 @@ if (fs.existsSync(ENV_PATH)) {
 }
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '127.0.0.1';
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+
+// Durable state (task queue + usage stats)
+const STATE_PATH = process.env.STATE_PATH || path.join(CONFIG_DIR, 'state.json');
+const persistence = new Persistence(STATE_PATH);
 
 // Detect drives on Windows
 const AVAILABLE_DRIVES = (() => {
@@ -75,18 +81,162 @@ let downloadDir = path.resolve(defaultDownloadDir);
 let maxConcurrent = parseInt(process.env.MAX_CONCURRENT_DOWNLOADS, 10) || 3;
 let jackettUrl = process.env.JACKETT_URL || '';
 let jackettApiKey = process.env.JACKETT_API_KEY || '';
+let authToken = process.env.AUTH_TOKEN || '';
+let speedLimitKbps = parseInt(process.env.SPEED_LIMIT_KBPS, 10) || 0;
+let minFreeGb = parseFloat(process.env.MIN_FREE_GB);
+if (Number.isNaN(minFreeGb)) minFreeGb = 5;
+let scheduleEnabled = process.env.SCHEDULE_ENABLED === '1';
+let scheduleStart = process.env.SCHEDULE_START || '';
+let scheduleEnd = process.env.SCHEDULE_END || '';
+let scheduleLimitKbps = parseInt(process.env.SCHEDULE_LIMIT_KBPS, 10) || 0;
 
 const client = new AllDebridClient(apiKey);
 const engine = new DownloadEngine(client, {
   downloadDir,
   maxConcurrent,
+  persistence,
+  maxRetries: parseInt(process.env.MAX_RETRIES, 10) || 3,
 });
+engine.setSpeedLimit(speedLimitKbps * 1024);
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(ROOT_DIR, 'public')));
 app.use('/assets', express.static(path.join(ROOT_DIR, 'assets')));
+
+// ==========================================
+// Auth (opt-in via AUTH_TOKEN setting)
+// ==========================================
+
+function extractRequestToken(req) {
+  const header = req.headers['authorization'];
+  if (header && /^bearer\s+/i.test(header)) {
+    return header.replace(/^bearer\s+/i, '').trim();
+  }
+  if (req.query && typeof req.query.token === 'string') {
+    return req.query.token.trim();
+  }
+  return '';
+}
+
+function requireAuth(req, res, next) {
+  if (!authToken) return next();
+  if (extractRequestToken(req) === authToken) return next();
+  res.status(401).json({ error: 'Unauthorized: a valid auth token is required' });
+}
+
+// Public (unauthenticated) endpoint so the UI can detect lock state and pre-validate tokens
+app.get('/api/auth-check', (req, res) => {
+  if (!authToken) {
+    return res.json({ authRequired: false, tokenValid: true });
+  }
+  const provided = extractRequestToken(req);
+  res.json({ authRequired: true, tokenValid: provided === authToken });
+});
+
+app.use('/api', requireAuth);
+
+// ==========================================
+// Disk space utilities
+// ==========================================
+
+function getFreeBytes(dirPath) {
+  try {
+    if (!fs.existsSync(dirPath)) return null;
+    // fs.statfs requires Node >= 18.15 on Windows; degrade gracefully
+    const stats = fs.statfsSync(dirPath);
+    return stats.bsize * stats.bavail;
+  } catch {
+    return null;
+  }
+}
+
+// ==========================================
+// Bandwidth scheduler (daily off-peak window)
+// ==========================================
+
+let effectiveLimitBytes = speedLimitKbps * 1024;
+
+function parseHmToMinutes(hm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || '').trim());
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+function isWithinScheduleWindow(now = new Date()) {
+  const startMin = parseHmToMinutes(scheduleStart);
+  const endMin = parseHmToMinutes(scheduleEnd);
+  if (startMin === null || endMin === null) return false;
+  const curMin = now.getHours() * 60 + now.getMinutes();
+  if (startMin === endMin) return true; // full-day window
+  if (startMin < endMin) return curMin >= startMin && curMin < endMin;
+  return curMin >= startMin || curMin < endMin; // wraps past midnight
+}
+
+function applyBandwidthPolicy() {
+  let targetKbps = speedLimitKbps;
+  if (scheduleEnabled && isWithinScheduleWindow() && scheduleLimitKbps > 0) {
+    targetKbps = scheduleLimitKbps;
+  }
+  const targetBytes = targetKbps * 1024;
+  if (targetBytes !== effectiveLimitBytes) {
+    effectiveLimitBytes = targetBytes;
+    engine.setSpeedLimit(targetBytes);
+    console.log(`[Scheduler] Speed limit set to ${targetKbps} KB/s`);
+  }
+}
+
+applyBandwidthPolicy();
+setInterval(applyBandwidthPolicy, 60_000).unref?.();
+
+// ==========================================
+// Runtime disk-space guard
+// ==========================================
+
+const MIN_FREE_BYTES = () => minFreeGb * 1024 ** 3;
+let diskGuardTripped = false;
+
+setInterval(() => {
+  if (minFreeGb <= 0) return;
+  const activeTasks = engine.getAllTasks().filter((t) => t.status === 'downloading');
+  if (activeTasks.length === 0) {
+    diskGuardTripped = false;
+    return;
+  }
+
+  const dirs = [...new Set(activeTasks.map((t) => t.outputDir))];
+  for (const dir of dirs) {
+    const free = getFreeBytes(dir);
+    if (free === null) continue;
+    if (free < MIN_FREE_BYTES()) {
+      if (!diskGuardTripped) {
+        diskGuardTripped = true;
+        const pausedCount = engine.pauseAll();
+        const message = `Low disk space (${(free / 1024 ** 3).toFixed(1)} GB free, threshold ${minFreeGb} GB). Paused ${pausedCount} task(s).`;
+        console.warn(`[DiskGuard] ${message}`);
+        broadcast({ type: 'disk_warning', message, freeBytes: free });
+        engine.emit('diskWarning', { message, freeBytes: free });
+      }
+      return;
+    }
+  }
+  diskGuardTripped = false;
+}, 60_000).unref?.();
+
+// Flush durable state cleanly on shutdown
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    try { engine.flushPersistenceSync(); } catch {}
+    process.exit(0);
+  });
+}
+process.on('exit', () => {
+  try { engine.flushPersistenceSync(); } catch {}
+});
 
 // Broadcast updates to all connected WebSocket clients
 function broadcast(payload) {
@@ -123,7 +273,20 @@ engine.on('taskDeleted', (taskId) => {
   broadcast({ type: 'task_deleted', taskId });
 });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  // Enforce auth token on WebSocket handshakes when configured
+  if (authToken) {
+    let token = '';
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      token = url.searchParams.get('token') || '';
+    } catch {}
+    if (token !== authToken) {
+      ws.close(4401, 'Unauthorized');
+      return;
+    }
+  }
+
   // Send initial snapshot
   ws.send(
     JSON.stringify({
@@ -134,6 +297,11 @@ wss.on('connection', (ws) => {
         hasApiKey: !!apiKey,
         downloadDir,
         maxConcurrent,
+        speedLimitKbps,
+        scheduleEnabled,
+        scheduleStart,
+        scheduleEnd,
+        scheduleLimitKbps,
       },
     })
   );
@@ -411,6 +579,20 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
         } catch {}
       }
     }
+
+    // Disk-space pre-flight: warn before queueing tasks larger than available space
+    let probeDir = targetDir;
+    while (probeDir && !fs.existsSync(probeDir)) {
+      const parent = path.dirname(probeDir);
+      if (parent === probeDir) break;
+      probeDir = parent;
+    }
+    p.freeSpaceBytes = probeDir ? getFreeBytes(probeDir) : null;
+    if (p.freeSpaceBytes !== null && p.totalSize > 0) {
+      p.fitsOnDisk = p.freeSpaceBytes - p.totalSize > MIN_FREE_BYTES();
+    } else {
+      p.fitsOnDisk = true; // unknown volume capacity: don't block
+    }
   }
 
   res.json({ previews, errors });
@@ -642,19 +824,35 @@ app.post('/api/downloads/:id/open-folder', (req, res) => {
   const targetPath = task?.outputDir || downloadDir;
 
   if (fs.existsSync(targetPath)) {
-    const isWindows = process.platform === 'win32';
-    const isMac = process.platform === 'darwin';
-    const cmd = isWindows ? `explorer "${targetPath}"` : isMac ? `open "${targetPath}"` : `xdg-open "${targetPath}"`;
-
-    exec(cmd, (err) => {
-      if (err) {
-        return res.status(500).json({ error: 'Could not open file manager' });
-      }
-      res.json({ success: true, opened: targetPath });
+    // spawn with array args (no shell interpolation) to avoid path injection
+    const cmd = process.platform === 'win32' ? 'explorer' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+    const child = spawn(cmd, [targetPath], { detached: true, stdio: 'ignore' });
+    child.unref();
+    child.on('error', () => {
+      // explorer.exe returns non-zero even on success; only surface spawn errors
     });
+    res.json({ success: true, opened: targetPath });
   } else {
     res.status(404).json({ error: 'Folder does not exist yet on disk' });
   }
+});
+
+/**
+ * Update queue priority of a task (0=high, 1=normal, 2=low)
+ */
+app.post('/api/downloads/:id/priority', (req, res) => {
+  const ok = engine.setTaskPriority(req.params.id, req.body?.priority);
+  if (!ok) {
+    return res.status(400).json({ error: 'Invalid task id or priority (0=high, 1=normal, 2=low)' });
+  }
+  res.json({ success: true, priority: engine.getTaskDetails(req.params.id)?.priority });
+});
+
+/**
+ * Usage statistics (today / all-time)
+ */
+app.get('/api/stats', (req, res) => {
+  res.json(engine.getStats());
 });
 
 /**
@@ -725,6 +923,29 @@ app.post('/api/cloud-magnets/:id/restart', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+/**
+ * Bulk delete cloud magnets from AllDebrid account
+ */
+app.post('/api/cloud-magnets/delete-bulk', async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  if (ids.length === 0) {
+    return res.status(400).json({ error: 'ids array is required' });
+  }
+
+  const deleted = [];
+  const failed = [];
+  for (const id of ids) {
+    try {
+      await client.deleteMagnet(id);
+      deleted.push(id);
+    } catch (err) {
+      failed.push({ id, error: err.message });
+    }
+  }
+
+  res.json({ success: failed.length === 0, deletedCount: deleted.length, deleted, failed });
 });
 
 /**
@@ -809,6 +1030,16 @@ app.get('/api/settings', (req, res) => {
     jackettUrl,
     jackettApiKey: jackettApiKey ? `${jackettApiKey.slice(0, 4)}...` : '',
     hasJackett: !!(jackettUrl && jackettApiKey),
+    host: HOST,
+    hasAuthToken: !!authToken,
+    authTokenMasked: authToken ? `${authToken.slice(0, 3)}...${authToken.slice(-3)}` : '',
+    speedLimitKbps,
+    maxRetries: engine.maxRetries ?? 3,
+    minFreeGb,
+    scheduleEnabled,
+    scheduleStart,
+    scheduleEnd,
+    scheduleLimitKbps,
   });
 });
 
@@ -816,7 +1047,11 @@ app.get('/api/settings', (req, res) => {
  * Update Settings & write to .env
  */
 app.post('/api/settings', async (req, res) => {
-  const { newApiKey, newDownloadDir, newMaxConcurrent, newJackettUrl, newJackettApiKey } = req.body;
+  const {
+    newApiKey, newDownloadDir, newMaxConcurrent, newJackettUrl, newJackettApiKey,
+    newAuthToken, newSpeedLimitKbps, newMaxRetries, newMinFreeGb,
+    newScheduleEnabled, newScheduleStart, newScheduleEnd, newScheduleLimitKbps,
+  } = req.body;
 
   if (newApiKey !== undefined && newApiKey.trim() !== '') {
     apiKey = newApiKey.trim();
@@ -828,7 +1063,7 @@ app.post('/api/settings', async (req, res) => {
     engine.setDownloadDir(downloadDir);
   }
 
-  if (newMaxConcurrent) {
+  if (newMaxConcurrent !== undefined && newMaxConcurrent !== '') {
     maxConcurrent = Math.max(1, parseInt(newMaxConcurrent, 10) || 3);
     engine.setMaxConcurrent(maxConcurrent);
   }
@@ -841,6 +1076,43 @@ app.post('/api/settings', async (req, res) => {
     jackettApiKey = newJackettApiKey.trim();
   }
 
+  if (newAuthToken !== undefined) {
+    authToken = String(newAuthToken).trim();
+  }
+
+  if (newSpeedLimitKbps !== undefined && newSpeedLimitKbps !== '') {
+    speedLimitKbps = Math.max(0, parseInt(newSpeedLimitKbps, 10) || 0);
+  }
+
+  if (newMaxRetries !== undefined && newMaxRetries !== '') {
+    engine.setMaxRetries(parseInt(newMaxRetries, 10) || 0);
+  }
+
+  if (newMinFreeGb !== undefined && newMinFreeGb !== '') {
+    const parsed = parseFloat(newMinFreeGb);
+    minFreeGb = Number.isNaN(parsed) ? 5 : Math.max(0, parsed);
+  }
+
+  if (newScheduleEnabled !== undefined) {
+    scheduleEnabled = newScheduleEnabled === true || newScheduleEnabled === '1' || newScheduleEnabled === 'true';
+  }
+  if (newScheduleStart !== undefined) {
+    scheduleStart = String(newScheduleStart).trim();
+  }
+  if (newScheduleEnd !== undefined) {
+    scheduleEnd = String(newScheduleEnd).trim();
+  }
+  if (newScheduleLimitKbps !== undefined && newScheduleLimitKbps !== '') {
+    scheduleLimitKbps = Math.max(0, parseInt(newScheduleLimitKbps, 10) || 0);
+  }
+
+  // Validate schedule window if enabled
+  if (scheduleEnabled && (parseHmToMinutes(scheduleStart) === null || parseHmToMinutes(scheduleEnd) === null)) {
+    return res.status(400).json({ error: 'Schedule window requires valid HH:MM start and end times' });
+  }
+
+  applyBandwidthPolicy();
+
   // Update .env file in CONFIG_DIR
   try {
     const envContent = `# AllDebrid API Key (Generate one from https://alldebrid.com/apikeys)
@@ -848,10 +1120,24 @@ ALLDEBRID_API_KEY=${apiKey}
 
 # Server Configuration
 PORT=${PORT}
+# Bind address (127.0.0.1 = local only; set 0.0.0.0 to expose on LAN, AUTH_TOKEN strongly recommended)
+HOST=${HOST}
 
 # Download Settings
 DOWNLOAD_DIR=${downloadDir}
 MAX_CONCURRENT_DOWNLOADS=${maxConcurrent}
+SPEED_LIMIT_KBPS=${speedLimitKbps}
+MAX_RETRIES=${engine.maxRetries ?? 3}
+MIN_FREE_GB=${minFreeGb}
+
+# Access Protection (when set, all API/WebSocket calls require this token)
+AUTH_TOKEN=${authToken}
+
+# Bandwidth Schedule (daily off-peak speed override)
+SCHEDULE_ENABLED=${scheduleEnabled ? '1' : '0'}
+SCHEDULE_START=${scheduleStart}
+SCHEDULE_END=${scheduleEnd}
+SCHEDULE_LIMIT_KBPS=${scheduleLimitKbps}
 
 # Optional Jackett / Prowlarr Integration
 JACKETT_URL=${jackettUrl}
@@ -871,6 +1157,16 @@ JACKETT_API_KEY=${jackettApiKey}
       maxConcurrent,
       jackettUrl,
       hasJackett: !!(jackettUrl && jackettApiKey),
+      host: HOST,
+      hasAuthToken: !!authToken,
+      authTokenMasked: authToken ? `${authToken.slice(0, 3)}...${authToken.slice(-3)}` : '',
+      speedLimitKbps,
+      maxRetries: engine.maxRetries ?? 3,
+      minFreeGb,
+      scheduleEnabled,
+      scheduleStart,
+      scheduleEnd,
+      scheduleLimitKbps,
     },
   });
 });
@@ -884,12 +1180,16 @@ app.get('*', (req, res) => {
 export function startServer(customPort = null) {
   const portToUse = customPort || PORT;
   return new Promise((resolve, reject) => {
-    server.listen(portToUse, () => {
+    server.listen(portToUse, HOST, () => {
       console.log(`=================================================`);
       console.log(`🚀 AllDebrid Downloader is running!`);
-      console.log(`🌐 Web Interface: http://localhost:${portToUse}`);
+      console.log(`🌐 Web Interface: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${portToUse}`);
       console.log(`📁 Download Path : ${downloadDir}`);
       console.log(`🔑 API Key Status: ${apiKey ? 'Configured ✅' : 'Missing (Set in UI) ⚠️'}`);
+      console.log(`🔒 Access Guard  : ${authToken ? 'Token Required 🔐' : 'Open (local only)'}`);
+      if (HOST === '0.0.0.0' && !authToken) {
+        console.warn('⚠️  WARNING: Server is exposed to the network without an AUTH_TOKEN!');
+      }
       console.log(`=================================================`);
       resolve({ server, app, engine, wss, port: portToUse });
     });

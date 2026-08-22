@@ -41,6 +41,19 @@
           </div>
         </div>
 
+        <!-- Downloaded Today Counter -->
+        <div class="telemetry-pill">
+          <svg class="telemetry-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <div class="telemetry-data">
+            <span class="telemetry-label">TODAY</span>
+            <span class="telemetry-val mono" id="todayDownloaded">0.00 B</span>
+          </div>
+        </div>
+
         <!-- User / Node Status -->
         <div class="telemetry-pill node-pill" id="userPill">
           <svg class="telemetry-icon" id="userStatusIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -201,7 +214,23 @@
             </svg>
             <input type="text" id="cloudSearchInput" class="hpc-input" placeholder="Query AllDebrid cloud cache..." />
           </div>
-          <div class="toolbar-actions">
+          <div class="toolbar-actions cloud-toolbar-controls">
+            <label class="cloud-select-all mono">
+              <input type="checkbox" id="cloudSelectAllCheckbox" />
+              <span>SELECT ALL</span>
+            </label>
+            <select id="cloudSortSelect" class="hpc-input cloud-sort-select">
+              <option value="default">SORT: DEFAULT</option>
+              <option value="name">SORT: NAME</option>
+              <option value="size">SORT: SIZE</option>
+              <option value="age">SORT: NEWEST</option>
+            </select>
+            <button class="btn btn-danger btn-sm" id="cloudBulkDeleteBtn" style="display:none;">
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              <span>DELETE SELECTED</span>
+            </button>
             <button class="btn btn-secondary btn-sm" id="refreshCloudBtn">
               <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="23 4 23 10 17 10" />
@@ -211,6 +240,13 @@
               <span>SYNC CLOUD</span>
             </button>
           </div>
+        </div>
+
+        <div class="cloud-usage-strip">
+          <div class="cloud-usage-track">
+            <div class="cloud-usage-fill" id="cloudUsageBar"></div>
+          </div>
+          <div class="cloud-usage-text mono" id="cloudUsageText">0 MAGNETS • 0.00 B IN CLOUD</div>
         </div>
 
         <div class="cloud-torrents-container" id="cloudTorrentsList">
@@ -379,6 +415,84 @@
               <input type="password" id="jackettApiKeyInput" class="hpc-input mono" placeholder="Paste Jackett API key..." />
             </div>
 
+            <!-- Bandwidth & Reliability -->
+            <div class="form-group">
+              <label for="speedLimitInput" class="hpc-label">
+                <span>GLOBAL SPEED LIMIT (KB/S)</span>
+              </label>
+              <input type="number" id="speedLimitInput" class="hpc-input mono" min="0" step="100" placeholder="0 = unlimited" />
+              <span class="field-help mono">Shared bandwidth ceiling across all concurrent file streams.</span>
+            </div>
+
+            <div class="settings-grid-2col">
+              <div class="form-group">
+                <label for="maxRetriesInput" class="hpc-label">
+                  <span>AUTO-RETRY ATTEMPTS</span>
+                </label>
+                <input type="number" id="maxRetriesInput" class="hpc-input mono" min="0" max="10" value="3" />
+                <span class="field-help mono">Backoff: 30s → 2m → 10m before a file is marked failed.</span>
+              </div>
+              <div class="form-group">
+                <label for="minFreeGbInput" class="hpc-label">
+                  <span>MIN FREE DISK (GB)</span>
+                </label>
+                <input type="number" id="minFreeGbInput" class="hpc-input mono" min="0" step="1" value="5" />
+                <span class="field-help mono">All downloads auto-pause below this free-space threshold (0 = off).</span>
+              </div>
+            </div>
+
+            <!-- Bandwidth Schedule -->
+            <div class="form-group">
+              <label class="hpc-checkbox-inline">
+                <input type="checkbox" id="scheduleEnabledCheckbox" />
+                <span>ENABLE OFF-PEAK BANDWIDTH SCHEDULE</span>
+              </label>
+              <div class="schedule-fields">
+                <div>
+                  <label class="hpc-label"><span>Daily Start</span></label>
+                  <input type="time" id="scheduleStartInput" class="hpc-input mono" value="23:00" />
+                </div>
+                <div>
+                  <label class="hpc-label"><span>Daily End</span></label>
+                  <input type="time" id="scheduleEndInput" class="hpc-input mono" value="07:00" />
+                </div>
+                <div>
+                  <label class="hpc-label"><span>Limit KB/s (0=unlimited)</span></label>
+                  <input type="number" id="scheduleLimitInput" class="hpc-input mono" min="0" step="100" placeholder="0" />
+                </div>
+              </div>
+              <span class="field-help mono">During this daily window the global speed limit is overridden by the schedule limit.</span>
+            </div>
+
+            <!-- Access Protection -->
+            <div class="form-group">
+              <label for="authTokenInput" class="hpc-label">
+                <span>ACCESS TOKEN (AUTH PROTECTION)</span>
+                <span class="range-indicator mono" id="authTokenMasked">NOT SET</span>
+              </label>
+              <input type="password" id="authTokenInput" class="hpc-input mono" placeholder="Set an access token..." autocomplete="off" />
+              <span class="field-help mono">When set, every API/WebSocket call requires this token. Leave blank to keep the current token.</span>
+            </div>
+
+            <!-- Lifetime Statistics -->
+            <div class="form-group">
+              <div class="hpc-label"><span>LIFETIME TRANSFER STATISTICS</span></div>
+              <div class="stats-strip">
+                <div class="stat-box">
+                  <span class="stat-val mono" id="statsLifetimeBytes">0.00 B</span>
+                  <span class="stat-label mono">ALL-TIME DOWNLOADED</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-val mono" id="statsPeakSpeed">0.00 B/s</span>
+                  <span class="stat-label mono">PEAK THROUGHPUT</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-val mono" id="statsActiveTime">--</span>
+                  <span class="stat-label mono">ACTIVE TIME</span>
+                </div>
+              </div>
+            </div>
+
             <div class="settings-actions">
               <button type="submit" class="btn btn-primary">SAVE CONFIGURATION</button>
               <button type="button" class="btn btn-secondary" id="testApiBtn">VERIFY CREDENTIALS</button>
@@ -492,6 +606,7 @@
           </div>
 
           <div class="review-destination-wrapper">
+            <div class="disk-warning-banner" id="reviewDiskWarning" style="display:none;"></div>
             <label class="hpc-label"><span>DISK DESTINATION FOLDER</span></label>
             <div class="input-with-button">
               <input type="text" id="reviewOutputDirInput" class="hpc-input mono" />
@@ -696,6 +811,26 @@
 
       <div class="modal-footer">
         <button class="btn btn-secondary" id="closeBatchCacheModalBottomBtn">CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Access Token Required -->
+  <div class="modal-backdrop" id="tokenAuthModal">
+    <div class="modal-card" style="max-width:440px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-tag mono">ACCESS CONTROL</div>
+          <h3>ENGINE LOCKED — TOKEN REQUIRED</h3>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">This server requires an access token. Enter it once — it will be stored locally in your browser.</p>
+        <input type="password" id="tokenAuthInput" class="hpc-input mono" placeholder="Paste access token..." autocomplete="off"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();submitAuthToken();}" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="submitAuthToken()">UNLOCK ENGINE</button>
       </div>
     </div>
   </div>

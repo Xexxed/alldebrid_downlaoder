@@ -11,7 +11,7 @@
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "test": "node test/test_server_endpoints.js"
+    "test": "node test/test_tier0_features.js && node test/test_server_endpoints.js"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
