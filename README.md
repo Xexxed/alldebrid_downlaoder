@@ -4,7 +4,7 @@
 
 ### High-Performance Debrid Download Engine • Multi-Part Archive Unpacker • Modern HPC Web Interface
 
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-00BFFF?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.6.0-00BFFF?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-ISC-00FF66?style=for-the-badge)](LICENSE)
 [![AllDebrid API](https://img.shields.io/badge/AllDebrid_API-v4%20%2F%20v4.1-FF3366?style=for-the-badge&logo=cloud&logoColor=white)](https://docs.alldebrid.com/)
 [![WebSockets](https://img.shields.io/badge/Telemetry-Live_WebSockets-FFAA00?style=for-the-badge&logo=websocket&logoColor=white)](https://github.com/websockets/ws)
@@ -102,7 +102,7 @@ A modern, full-featured, and self-hosted torrent, file hoster, and cloud downloa
 ## 🚀 Quick Start
 
 ### Prerequisites
-* [Node.js](https://nodejs.org/) v18.0.0 or higher
+* [Node.js](https://nodejs.org/) v20.6.0 or higher (the `--env-file` flag used by the launch scripts requires Node 20.6.0+)
 * [AllDebrid Account](https://alldebrid.com/) & [API Key](https://alldebrid.com/apikeys)
 * *(Optional, for archive extraction)*: [7-Zip](https://www.7-zip.org/) or [WinRAR](https://www.win-rar.com/) installed on the host system.
 
@@ -170,6 +170,27 @@ Open your browser at `http://localhost:3000` (or enjoy the native desktop window
 
 ---
 
+## 🧪 Testing
+
+The test suite is written in plain Node.js (no test framework required) and can run against the live code and a temporary isolated server.
+
+```bash
+# Run the full suite (tier-0 feature checks + live server endpoint tests)
+npm test
+
+# Or run individual suites directly:
+node test/verify_all.js              # Archive detection, parsers, RAR grouping
+node test/test_tier0_features.js     # Core feature tier-0 checks
+node test/test_server_endpoints.js   # Spins up an isolated server and hits REST endpoints
+node test/test_search_api.js         # Multi-indexer search + Jackett integration
+node test/test_parser_and_tree.js    # Download-input parsing + directory-tree building
+node test/test_ws_auth.js            # WebSocket + access-token auth behavior
+```
+
+> **Note**: endpoint/integration tests start a temporary server (default port `3088`) and require a valid `ALLDEBRID_API_KEY` in `.env` for live API assertions. Parser, archive, and auth-logic checks run fully offline.
+
+---
+
 ## 📖 Usage Guide
 
 ### 1. Downloading Torrents & Magnet Links
@@ -212,6 +233,7 @@ Open your browser at `http://localhost:3000` (or enjoy the native desktop window
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/status` | Get node status, AllDebrid account info, and live metrics. |
+| `GET` | `/api/auth-check` | Report whether an access token is required and whether the supplied token is valid. |
 | `POST` | `/api/downloads/preview` | Preview torrent or folder topology before queueing. |
 | `POST` | `/api/downloads/add` | Add confirmed download tasks to the pipeline. |
 | `POST` | `/api/downloads/upload-torrent` | Ingest uploaded `.torrent` file(s). |
@@ -228,6 +250,7 @@ Open your browser at `http://localhost:3000` (or enjoy the native desktop window
 | `GET` | `/api/cloud-magnets` | List torrents cached in AllDebrid cloud storage. |
 | `POST` | `/api/cloud-magnets/:id/download` | Queue a cloud torrent directly to local disk. |
 | `POST` | `/api/cloud-magnets/:id/delete` | Delete a torrent from AllDebrid cloud account. |
+| `POST` | `/api/cloud-magnets/:id/restart` | Restart a torrent in AllDebrid cloud storage. |
 | `POST` | `/api/cloud-magnets/delete-bulk` | Bulk delete cloud magnets by `ids[]`. |
 | `GET` | `/api/search` | Multi-indexer release search with AllDebrid instant cache telemetry. |
 | `POST` | `/api/magnet/check-cache` | Batch inspect magnet links and infohashes for cloud availability. |
@@ -242,6 +265,19 @@ Open your browser at `http://localhost:3000` (or enjoy the native desktop window
 
 * **API Key Safety**: Your AllDebrid API key is stored strictly on your local machine in `.env` and is never exposed to third-party servers.
 * **Input Sanitization**: File and folder paths are sanitized across Windows, Linux, and macOS to prevent path traversal vulnerabilities.
+
+---
+
+## 🔧 Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+| :--- | :--- | :--- |
+| `node: bad option --env-file` on startup | Node.js older than v20.6.0 | Upgrade Node.js to v20.6.0 or newer. |
+| `Error: ENOENT` from the extractor | No `7-Zip` / `WinRAR` / `tar` on `PATH` | Install [7-Zip](https://www.7-zip.org/) (or WinRAR) and ensure `7z.exe` is on `PATH`; the engine auto-detects it at startup. |
+| `401` / `403` on every API call | `AUTH_TOKEN` set but not sent by client | Pass the token via the `Authorization: Bearer <token>` header or `?token=<token>` query param; open the app via the Electron shell or the UI which injects it automatically. |
+| `Cannot find module` after clone | Dependencies not installed | Run `npm install` in the project root. |
+| Search returns no results | Jackett not configured / offline | Leave Jackett fields empty to use the built-in public indexers, or verify `JACKETT_URL` + `JACKETT_API_KEY` in `.env`. |
+| Server won't bind to LAN IP | `HOST` still `127.0.0.1` | Set `HOST=0.0.0.0` **and** a strong `AUTH_TOKEN` before exposing the port. |
 
 ---
 
