@@ -10,6 +10,7 @@ import { pipeline } from 'stream/promises';
 import { flattenFileTree, sanitizePathSegment, normalizeMagnetResponse } from './alldebrid.js';
 import { extractTaskArchives, isArchiveFile } from './extractor.js';
 import { planFileInDestination, assertContained, DestinationError } from './planning/destination-planner.js';
+import { DiskPolicy } from './planning/disk-policy.js';
 
 /**
  * Shared token-bucket bandwidth limiter.
@@ -100,6 +101,7 @@ export class DownloadEngine extends EventEmitter {
     this.speedTrackerInterval = null;
     this.persistSweepInterval = null;
     this.stats = { totalBytes: 0, activeSeconds: 0, peakSpeed: 0, perDay: {} };
+    this.diskPolicy = options.diskPolicy || new DiskPolicy({ minFreeBytes: 0 });
 
     this.stopped = options.autoStart === false;
     this.operations = new Map();
@@ -963,9 +965,26 @@ export class DownloadEngine extends EventEmitter {
     const abortController = new AbortController();
     this.activeFileStreams.set(file.id, { abortController, writeStream: null });
 
+    let diskReservation = false;
+    const targetDir = path.dirname(file.fullLocalPath);
+
     try {
+      // Reserve remaining bytes on this volume before any async preparation.
+      if (file.size > 0) {
+        const remaining = Math.max(0, file.size - (file.downloaded || 0));
+        if (remaining > 0) {
+          const reservation = this.diskPolicy.reserve(targetDir, file.id, remaining);
+          diskReservation = reservation.ok;
+          if (!reservation.ok) {
+            throw new Error(
+              `Insufficient disk space on volume: need ${remaining} bytes, ` +
+              `short by ${reservation.shortageBytes} bytes`
+            );
+          }
+        }
+      }
+
       // 2. Ensure target directory exists on disk (preserving folder structure)
-      const targetDir = path.dirname(file.fullLocalPath);
       await fs.promises.mkdir(targetDir, { recursive: true });
       abortController.signal.throwIfAborted();
 
@@ -1063,6 +1082,7 @@ export class DownloadEngine extends EventEmitter {
         this.handleFileFailure(task, file, err);
       }
     } finally {
+      if (diskReservation) this.diskPolicy.release(targetDir, file.id);
       this.activeFileStreams.delete(file.id);
       this.updateTaskProgress(task);
       this.processQueue();
