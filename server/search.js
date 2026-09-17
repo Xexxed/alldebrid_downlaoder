@@ -4,6 +4,7 @@
  */
 
 import { parseHumanBytes } from './alldebrid.js';
+import { canonicalIdentity } from './search/identity.js';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -333,18 +334,19 @@ export async function searchAggregator(query, options = {}) {
     }
   }
 
-  // Deduplicate by InfoHash
+  // Deduplicate by canonical InfoHash (hex and base32 forms collapse together)
   const seenHashes = new Set();
   const deduplicated = [];
 
   for (const item of allResults) {
-    if (!item.infoHash) {
+    const canonical = item.infoHash ? canonicalIdentity(item.infoHash) : null;
+    if (!canonical) {
       deduplicated.push(item);
       continue;
     }
-    const hashKey = item.infoHash.toLowerCase();
-    if (!seenHashes.has(hashKey)) {
-      seenHashes.add(hashKey);
+    item.infoHash = canonical;
+    if (!seenHashes.has(canonical)) {
+      seenHashes.add(canonical);
       deduplicated.push(item);
     }
   }
