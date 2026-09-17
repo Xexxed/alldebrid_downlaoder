@@ -114,6 +114,10 @@ function extractRequestToken(req) {
   if (header && /^bearer\s+/i.test(header)) {
     return header.replace(/^bearer\s+/i, '').trim();
   }
+  return '';
+}
+
+function extractQueryToken(req) {
   if (req.query && typeof req.query.token === 'string') {
     return req.query.token.trim();
   }
@@ -131,7 +135,9 @@ app.get('/api/auth-check', (req, res) => {
   if (!authToken) {
     return res.json({ authRequired: false, tokenValid: true });
   }
-  const provided = extractRequestToken(req);
+  // Explicit header wins over any stored/query token so rotated credentials
+  // can be validated even when a stale token is still stored client-side.
+  const provided = extractRequestToken(req) || extractQueryToken(req);
   res.json({ authRequired: true, tokenValid: provided === authToken });
 });
 

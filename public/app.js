@@ -56,9 +56,7 @@ function storeToken(token) {
 }
 
 function withToken(url) {
-  const token = getStoredToken();
-  if (!token) return url;
-  return url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+  return url;
 }
 
 async function apiFetch(url, options = {}) {
@@ -330,7 +328,11 @@ let reconnectTimer = null;
 
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = withToken(`${protocol}//${window.location.host}`);
+  // WS keeps the token handshake until the Stage C ticket flow; REST is header-only.
+  const token = getStoredToken();
+  const wsUrl = token
+    ? `${protocol}//${window.location.host}?token=${encodeURIComponent(token)}`
+    : `${protocol}//${window.location.host}`;
 
   ws = new WebSocket(wsUrl);
 
