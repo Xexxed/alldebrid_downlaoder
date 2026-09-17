@@ -1039,7 +1039,9 @@ app.get('/api/settings', (req, res) => {
 });
 
 /**
- * Update Settings & write to .env
+ * Update Settings — transactional: validate the complete candidate, write the
+ * .env snapshot atomically first, and only then activate live values. A failed
+ * write leaves runtime and persisted settings unchanged.
  */
 app.post('/api/settings', async (req, res) => {
   const {
@@ -1048,70 +1050,100 @@ app.post('/api/settings', async (req, res) => {
     newScheduleEnabled, newScheduleStart, newScheduleEnd, newScheduleLimitKbps,
   } = req.body;
 
-  if (newApiKey !== undefined && newApiKey.trim() !== '') {
-    apiKey = newApiKey.trim();
-    client.setApiKey(apiKey);
-  }
+  // Build the complete candidate from current live values.
+  const candidate = {
+    apiKey,
+    downloadDir,
+    maxConcurrent,
+    jackettUrl,
+    jackettApiKey,
+    authToken,
+    speedLimitKbps,
+    maxRetries: engine.maxRetries ?? 3,
+    minFreeGb,
+    scheduleEnabled,
+    scheduleStart,
+    scheduleEnd,
+    scheduleLimitKbps,
+  };
 
-  if (newDownloadDir && newDownloadDir.trim() !== '') {
-    downloadDir = path.resolve(newDownloadDir.trim());
-    engine.setDownloadDir(downloadDir);
-  }
-
-  if (newMaxConcurrent !== undefined && newMaxConcurrent !== '') {
-    maxConcurrent = Math.max(1, parseInt(newMaxConcurrent, 10) || 3);
-    engine.setMaxConcurrent(maxConcurrent);
-  }
-
-  if (newJackettUrl !== undefined) {
-    jackettUrl = newJackettUrl.trim();
-  }
-
-  if (newJackettApiKey !== undefined && newJackettApiKey.trim() !== '') {
-    jackettApiKey = newJackettApiKey.trim();
-  }
-
-  if (newAuthToken !== undefined) {
-    authToken = String(newAuthToken).trim();
-  }
-
-  if (newSpeedLimitKbps !== undefined && newSpeedLimitKbps !== '') {
-    speedLimitKbps = Math.max(0, parseInt(newSpeedLimitKbps, 10) || 0);
-  }
-
-  if (newMaxRetries !== undefined && newMaxRetries !== '') {
-    engine.setMaxRetries(parseInt(newMaxRetries, 10) || 0);
-  }
-
-  if (newMinFreeGb !== undefined && newMinFreeGb !== '') {
-    const parsed = parseFloat(newMinFreeGb);
-    minFreeGb = Number.isNaN(parsed) ? 5 : Math.max(0, parsed);
-  }
-
-  if (newScheduleEnabled !== undefined) {
-    scheduleEnabled = newScheduleEnabled === true || newScheduleEnabled === '1' || newScheduleEnabled === 'true';
-  }
-  if (newScheduleStart !== undefined) {
-    scheduleStart = String(newScheduleStart).trim();
-  }
-  if (newScheduleEnd !== undefined) {
-    scheduleEnd = String(newScheduleEnd).trim();
-  }
-  if (newScheduleLimitKbps !== undefined && newScheduleLimitKbps !== '') {
-    scheduleLimitKbps = Math.max(0, parseInt(newScheduleLimitKbps, 10) || 0);
-  }
-
-  // Validate schedule window if enabled
-  if (scheduleEnabled && (parseHmToMinutes(scheduleStart) === null || parseHmToMinutes(scheduleEnd) === null)) {
-    return res.status(400).json({ error: 'Schedule window requires valid HH:MM start and end times' });
-  }
-
-  applyBandwidthPolicy();
-
-  // Update .env file in CONFIG_DIR
   try {
-    const envContent = `# AllDebrid API Key (Generate one from https://alldebrid.com/apikeys)
-ALLDEBRID_API_KEY=${apiKey}
+    if (newApiKey !== undefined) {
+      if (typeof newApiKey !== 'string') throw Object.assign(new Error('API key must be a string'), { status: 400 });
+      if (newApiKey.trim() !== '') candidate.apiKey = newApiKey.trim();
+    }
+    if (newDownloadDir !== undefined) {
+      if (typeof newDownloadDir !== 'string' || newDownloadDir.trim() === '') throw Object.assign(new Error('Download directory must be a non-empty string'), { status: 400 });
+      candidate.downloadDir = path.resolve(newDownloadDir.trim());
+    }
+    if (newMaxConcurrent !== undefined && newMaxConcurrent !== '') {
+      const parsed = parseInt(newMaxConcurrent, 10);
+      if (!Number.isInteger(parsed) || String(parsed) !== String(newMaxConcurrent).trim() || parsed < 1 || parsed > 10) {
+        throw Object.assign(new Error('Max concurrent downloads must be an integer between 1 and 10'), { status: 400 });
+      }
+      candidate.maxConcurrent = parsed;
+    }
+    if (newJackettUrl !== undefined) {
+      if (typeof newJackettUrl !== 'string') throw Object.assign(new Error('Jackett URL must be a string'), { status: 400 });
+      candidate.jackettUrl = newJackettUrl.trim();
+    }
+    if (newJackettApiKey !== undefined) {
+      if (typeof newJackettApiKey !== 'string') throw Object.assign(new Error('Jackett API key must be a string'), { status: 400 });
+      if (newJackettApiKey.trim() !== '') candidate.jackettApiKey = newJackettApiKey.trim();
+    }
+    if (newAuthToken !== undefined) {
+      if (typeof newAuthToken !== 'string') throw Object.assign(new Error('Auth token must be a string'), { status: 400 });
+      candidate.authToken = String(newAuthToken).trim();
+    }
+    if (newSpeedLimitKbps !== undefined && newSpeedLimitKbps !== '') {
+      const parsed = parseInt(newSpeedLimitKbps, 10);
+      if (!Number.isInteger(parsed) || String(parsed) !== String(newSpeedLimitKbps).trim() || parsed < 0 || parsed > 100_000_000) {
+        throw Object.assign(new Error('Speed limit must be a non-negative integer (KB/s)'), { status: 400 });
+      }
+      candidate.speedLimitKbps = parsed;
+    }
+    if (newMaxRetries !== undefined && newMaxRetries !== '') {
+      const parsed = parseInt(newMaxRetries, 10);
+      if (!Number.isInteger(parsed) || String(parsed) !== String(newMaxRetries).trim() || parsed < 0 || parsed > 10) {
+        throw Object.assign(new Error('Max retries must be an integer between 0 and 10'), { status: 400 });
+      }
+      candidate.maxRetries = parsed;
+    }
+    if (newMinFreeGb !== undefined && newMinFreeGb !== '') {
+      const parsed = parseFloat(newMinFreeGb);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1024 * 1024) {
+        throw Object.assign(new Error('Minimum free space must be a finite non-negative number of GB'), { status: 400 });
+      }
+      candidate.minFreeGb = parsed;
+    }
+    if (newScheduleEnabled !== undefined) {
+      candidate.scheduleEnabled = newScheduleEnabled === true || newScheduleEnabled === '1' || newScheduleEnabled === 'true';
+    }
+    if (newScheduleStart !== undefined) {
+      if (typeof newScheduleStart !== 'string') throw Object.assign(new Error('Schedule start must be a string'), { status: 400 });
+      candidate.scheduleStart = newScheduleStart.trim();
+    }
+    if (newScheduleEnd !== undefined) {
+      if (typeof newScheduleEnd !== 'string') throw Object.assign(new Error('Schedule end must be a string'), { status: 400 });
+      candidate.scheduleEnd = newScheduleEnd.trim();
+    }
+    if (newScheduleLimitKbps !== undefined && newScheduleLimitKbps !== '') {
+      const parsed = parseInt(newScheduleLimitKbps, 10);
+      if (!Number.isInteger(parsed) || String(parsed) !== String(newScheduleLimitKbps).trim() || parsed < 0 || parsed > 100_000_000) {
+        throw Object.assign(new Error('Schedule speed limit must be a non-negative integer (KB/s)'), { status: 400 });
+      }
+      candidate.scheduleLimitKbps = parsed;
+    }
+    if (candidate.scheduleEnabled && (parseHmToMinutes(candidate.scheduleStart) === null || parseHmToMinutes(candidate.scheduleEnd) === null)) {
+      throw Object.assign(new Error('Schedule window requires valid HH:MM start and end times'), { status: 400 });
+    }
+  } catch (error) {
+    return res.status(error.status ?? 400).json({ error: error.message });
+  }
+
+  // Candidate validated: persist the snapshot atomically BEFORE activating it.
+  const envContent = `# AllDebrid API Key (Generate one from https://alldebrid.com/apikeys)
+ALLDEBRID_API_KEY=${candidate.apiKey}
 
 # Server Configuration
 PORT=${PORT}
@@ -1119,29 +1151,58 @@ PORT=${PORT}
 HOST=${HOST}
 
 # Download Settings
-DOWNLOAD_DIR=${downloadDir}
-MAX_CONCURRENT_DOWNLOADS=${maxConcurrent}
-SPEED_LIMIT_KBPS=${speedLimitKbps}
-MAX_RETRIES=${engine.maxRetries ?? 3}
-MIN_FREE_GB=${minFreeGb}
+DOWNLOAD_DIR=${candidate.downloadDir}
+MAX_CONCURRENT_DOWNLOADS=${candidate.maxConcurrent}
+SPEED_LIMIT_KBPS=${candidate.speedLimitKbps}
+MAX_RETRIES=${candidate.maxRetries}
+MIN_FREE_GB=${candidate.minFreeGb}
 
 # Access Protection (when set, all API/WebSocket calls require this token)
-AUTH_TOKEN=${authToken}
+AUTH_TOKEN=${candidate.authToken}
 
 # Bandwidth Schedule (daily off-peak speed override)
-SCHEDULE_ENABLED=${scheduleEnabled ? '1' : '0'}
-SCHEDULE_START=${scheduleStart}
-SCHEDULE_END=${scheduleEnd}
-SCHEDULE_LIMIT_KBPS=${scheduleLimitKbps}
+SCHEDULE_ENABLED=${candidate.scheduleEnabled ? '1' : '0'}
+SCHEDULE_START=${candidate.scheduleStart}
+SCHEDULE_END=${candidate.scheduleEnd}
+SCHEDULE_LIMIT_KBPS=${candidate.scheduleLimitKbps}
 
 # Optional Jackett / Prowlarr Integration
-JACKETT_URL=${jackettUrl}
-JACKETT_API_KEY=${jackettApiKey}
+JACKETT_URL=${candidate.jackettUrl}
+JACKETT_API_KEY=${candidate.jackettApiKey}
 `;
+  const tmpPath = `${ENV_PATH}.${Date.now()}.tmp`;
+  try {
     fs.mkdirSync(CONFIG_DIR, { recursive: true });
-    fs.writeFileSync(ENV_PATH, envContent, 'utf-8');
+    fs.writeFileSync(tmpPath, envContent, 'utf-8');
+    fs.renameSync(tmpPath, ENV_PATH);
   } catch (err) {
-    console.error('Failed to write .env:', err);
+    try { fs.unlinkSync(tmpPath); } catch {}
+    console.error('Failed to write .env:', err.message);
+    return res.status(500).json({ error: 'Settings were not saved: persisting configuration failed. Live values are unchanged.' });
+  }
+
+  // Persisted: now activate live values.
+  const previousAuthToken = authToken;
+  apiKey = candidate.apiKey;
+  downloadDir = candidate.downloadDir;
+  maxConcurrent = candidate.maxConcurrent;
+  jackettUrl = candidate.jackettUrl;
+  jackettApiKey = candidate.jackettApiKey;
+  authToken = candidate.authToken;
+  speedLimitKbps = candidate.speedLimitKbps;
+  minFreeGb = candidate.minFreeGb;
+  scheduleEnabled = candidate.scheduleEnabled;
+  scheduleStart = candidate.scheduleStart;
+  scheduleEnd = candidate.scheduleEnd;
+  scheduleLimitKbps = candidate.scheduleLimitKbps;
+
+  engine.setDownloadDir(downloadDir);
+  engine.setMaxConcurrent(maxConcurrent);
+  engine.setMaxRetries(candidate.maxRetries);
+  if (apiKey !== undefined) client.setApiKey(apiKey);
+  applyBandwidthPolicy();
+  if (previousAuthToken !== authToken) {
+    for (const wsClient of wss.clients) wsClient.terminate();
   }
 
   res.json({
