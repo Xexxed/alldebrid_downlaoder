@@ -11,7 +11,7 @@
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "test": "node --test test/test_restore_pause.js test/test_search_safety.js test/test_stage_a_safety.js test/test_transfer_integrity.js test/verify_all.js",
+    "test": "node --test test/test_restore_pause.js test/test_search_safety.js test/test_stage_a_safety.js test/test_transfer_integrity.js test/test_persistence_migration.js test/verify_all.js",
     "test:integration": "node test/test_tier0_features.js && node test/test_server_endpoints.js"
   },
   "dependencies": {
