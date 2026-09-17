@@ -902,7 +902,8 @@ export class DownloadEngine extends EventEmitter {
    * Handles downloading a single file with folder creation, link unlock, and range resume
    */
   downloadFileStream(task, file) {
-    if (this.stopped || this.operations.has(file.id)) return this.operations.get(file.id);
+    if (this.stopped) return Promise.resolve();
+    if (this.operations.has(file.id)) return this.operations.get(file.id);
     const operation = this.runFileStream(task, file);
     this.operations.set(file.id, operation);
     operation.finally(() => this.operations.delete(file.id)).catch(() => {});
@@ -971,15 +972,42 @@ export class DownloadEngine extends EventEmitter {
         signal: abortController.signal,
       });
 
-      if (!response.ok && response.status !== 206) {
-        // If range request failed (416 Range Not Satisfiable), restart from beginning
-        if (response.status === 416) {
+      if (response.status === 416) {
+        // Range Not Satisfiable: reconcile against authoritative remote size.
+        const lenHeader = response.headers.get('content-range');
+        const total = lenHeader ? Number(/^bytes \*\/(\d+)$/.exec(lenHeader)?.[1]) : NaN;
+        if (file.size > 0 && Number.isFinite(total) && total === file.size) {
+          // Remote size unchanged: local partial already complete (server is
+          // strict about the open-ended range); validate exact length below.
+          return this.finalizeDownloadedFile(task, file);
+        }
+        // Cannot justify completion: one safe fresh restart of this owned file.
+        if (response.body) { try { await response.body.cancel(); } catch {} }
+        const retryRes = await fetch(downloadUrl, { signal: abortController.signal });
+        if (!retryRes.ok) throw new Error(`HTTP ${retryRes.status}: ${retryRes.statusText}`);
+        file.downloaded = 0;
+        return this.pipeResponseToDisk(task, file, retryRes, 0, abortController);
+      }
+
+      if (startOffset > 0) {
+        if (response.status !== 206) {
+          // Server ignored Range and returned a full 200 body: restarting an
+          // owned partial from zero instead of appending mismatched bytes.
+          if (response.body) { try { await response.body.cancel(); } catch {} }
+          const freshRes = await fetch(downloadUrl, { signal: abortController.signal });
+          if (!freshRes.ok) throw new Error(`HTTP ${freshRes.status}: ${freshRes.statusText}`);
           startOffset = 0;
           file.downloaded = 0;
-          const retryRes = await fetch(downloadUrl, { signal: abortController.signal });
-          if (!retryRes.ok) throw new Error(`HTTP ${retryRes.status}: ${retryRes.statusText}`);
-          return this.pipeResponseToDisk(task, file, retryRes, 0, abortController);
+          return this.pipeResponseToDisk(task, file, freshRes, 0, abortController);
         }
+        const contentRange = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec(response.headers.get('content-range') || '');
+        if (!contentRange || Number(contentRange[1]) !== startOffset) {
+          throw new Error(`Invalid Content-Range for resume: ${response.headers.get('content-range') || 'missing'}`);
+        }
+        if (contentRange[3] !== '*' && file.size > 0 && Number(contentRange[3]) !== file.size) {
+          throw new Error(`Remote size changed: expected ${file.size}, got ${contentRange[3]}`);
+        }
+      } else if (response.status !== 200 && response.status !== 206) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
@@ -1075,11 +1103,7 @@ export class DownloadEngine extends EventEmitter {
         signal: abortController.signal,
       });
 
-      file.status = 'completed';
-      file.progress = 100;
-      file.retryCount = 0;
-      file.retryAt = null;
-      this._persist();
+      await this.finalizeDownloadedFile(task, file);
     } catch (err) {
       if (abortController.signal.aborted) {
         // Aborted cleanly by pause or cancel
@@ -1089,6 +1113,42 @@ export class DownloadEngine extends EventEmitter {
     } finally {
       this.activeFileStreams.delete(file.id);
     }
+  }
+
+  /**
+   * Validates exact on-disk length after EOF and publishes completion.
+   * Unknown-length downloads end as downloaded_unverified, never size-verified.
+   */
+  async finalizeDownloadedFile(task, file) {
+    const stat = await fs.promises.stat(file.fullLocalPath);
+    if (file.size > 0) {
+      if (stat.size < file.size) {
+        throw new Error(`Truncated response: got ${stat.size} of ${file.size} bytes`);
+      }
+      if (stat.size > file.size) {
+        file.status = 'error';
+        file.error = `Oversized response: got ${stat.size} of ${file.size} bytes`;
+        file.retryAt = null;
+        this._persist();
+        return;
+      }
+      file.downloaded = stat.size;
+      file.verification = 'size_verified';
+    } else {
+      file.verification = 'unverified';
+    }
+    file.status = 'completed';
+    file.progress = 100;
+    file.retryCount = 0;
+    file.retryAt = null;
+    this._persist();
+  }
+
+  /**
+   * Validate an already-complete on-disk file without transferring bytes.
+   */
+  async finalizeDownloadedFileFromDisk(task, file) {
+    return this.finalizeDownloadedFile(task, file);
   }
 
   /**
