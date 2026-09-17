@@ -791,14 +791,22 @@ export class DownloadEngine extends EventEmitter {
    * Background polling for magnets still downloading in the AllDebrid cloud
    */
   async pollCloudMagnets() {
-    const cloudWaitingTasks = Array.from(this.tasks.values()).filter(
-      (t) => t.status === 'waiting_cloud' && t.magnetId
-    );
+    // Non-overlap gate: a slow provider round must never stack with the next tick.
+    if (this._cloudPollInFlight) return;
+    this._cloudPollInFlight = true;
+    try {
+      const cloudWaitingTasks = Array.from(this.tasks.values()).filter(
+        (t) => t.status === 'waiting_cloud' && t.magnetId
+      );
 
-    if (cloudWaitingTasks.length === 0) return;
+      if (cloudWaitingTasks.length === 0) return;
 
-    for (const task of cloudWaitingTasks) {
-      await this.syncMagnetState(task);
+      for (const task of cloudWaitingTasks) {
+        if (this.stopped) return;
+        await this.syncMagnetState(task);
+      }
+    } finally {
+      this._cloudPollInFlight = false;
     }
 
     this.processQueue();
@@ -810,6 +818,8 @@ export class DownloadEngine extends EventEmitter {
    */
   async processQueue() {
     if (this.stopped) return;
+    // Admissions must reflect prepared-but-unstarted work: files hold their
+    // stream slot synchronously inside downloadFileStream before any await.
     let runningCount = this.activeFileStreams.size;
     if (runningCount >= this.maxConcurrent) return;
 
