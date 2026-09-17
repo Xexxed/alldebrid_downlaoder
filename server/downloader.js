@@ -1363,6 +1363,24 @@ export class DownloadEngine extends EventEmitter {
   }
 
   /**
+   * System disk-pressure pause for a single volume: pauses only tasks whose
+   * output lives on the affected volume. Never overrides an explicit user
+   * pause; recoverable only by explicit resume or disk recovery.
+   */
+  pauseVolumeTasks(volumeKey, reason) {
+    let count = 0;
+    for (const task of this.tasks.values()) {
+      if (!['downloading', 'ready_to_download', 'waiting_cloud'].includes(task.status)) continue;
+      if (this.diskPolicy.volumeKeyFor(task.outputDir) !== volumeKey) continue;
+      if (this.pauseTask(task.id)) {
+        count++;
+        task.pauseReason = reason || 'system:disk_pressure';
+      }
+    }
+    return count;
+  }
+
+  /**
    * Resume a paused task
    */
   resumeTask(taskId) {

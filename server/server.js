@@ -96,6 +96,7 @@ const engine = engineFactory(client, {
   autoStart: false,
 });
 engine.setSpeedLimit(speedLimitKbps * 1024);
+engine.diskPolicy?.setMinFreeBytes?.(minFreeGb * 1024 ** 3);
 
 // Middleware
 app.use(express.json());
@@ -202,33 +203,39 @@ function applyBandwidthPolicy() {
 // ==========================================
 
 const MIN_FREE_BYTES = () => minFreeGb * 1024 ** 3;
-let diskGuardTripped = false;
+const diskGuardTripped = new Set();
 
 function checkDiskSpace() {
   if (minFreeGb <= 0) return;
   const activeTasks = engine.getAllTasks().filter((t) => t.status === 'downloading');
   if (activeTasks.length === 0) {
-    diskGuardTripped = false;
+    diskGuardTripped.clear();
     return;
   }
 
-  const dirs = [...new Set(activeTasks.map((t) => t.outputDir))];
-  for (const dir of dirs) {
+  // Per-volume evaluation: pressure on one volume pauses only that volume's
+  // tasks; unrelated volumes keep transferring.
+  const byVolume = new Map();
+  for (const task of activeTasks) {
+    const key = engine.diskPolicy.volumeKeyFor(task.outputDir) ?? `path:${task.outputDir}`;
+    if (!byVolume.has(key)) byVolume.set(key, task.outputDir);
+  }
+  for (const [volumeKey, dir] of byVolume) {
     const free = getFreeBytes(dir);
     if (free === null) continue;
     if (free < MIN_FREE_BYTES()) {
-      if (!diskGuardTripped) {
-        diskGuardTripped = true;
-        const pausedCount = engine.pauseAll();
-        const message = `Low disk space (${(free / 1024 ** 3).toFixed(1)} GB free, threshold ${minFreeGb} GB). Paused ${pausedCount} task(s).`;
+      if (!diskGuardTripped.has(volumeKey)) {
+        diskGuardTripped.add(volumeKey);
+        const pausedCount = engine.pauseVolumeTasks(volumeKey, 'system:disk_pressure');
+        const message = `Low disk space on ${volumeKey} (${(free / 1024 ** 3).toFixed(1)} GB free, threshold ${minFreeGb} GB). Paused ${pausedCount} task(s) on that volume.`;
         console.warn(`[DiskGuard] ${message}`);
-        broadcast({ type: 'disk_warning', message, freeBytes: free });
-        engine.emit('diskWarning', { message, freeBytes: free });
+        broadcast({ type: 'disk_warning', message, freeBytes: free, volumeKey });
+        engine.emit('diskWarning', { message, freeBytes: free, volumeKey });
       }
-      return;
+    } else {
+      diskGuardTripped.delete(volumeKey);
     }
   }
-  diskGuardTripped = false;
 }
 
 function onEngine(event, listener) {
@@ -1297,6 +1304,7 @@ JACKETT_API_KEY=${candidate.jackettApiKey}
   engine.setDownloadDir(downloadDir);
   engine.setMaxConcurrent(maxConcurrent);
   engine.setMaxRetries(candidate.maxRetries);
+  engine.diskPolicy?.setMinFreeBytes?.(minFreeGb * 1024 ** 3);
   if (apiKey !== undefined) client.setApiKey(apiKey);
   applyBandwidthPolicy();
   if (previousAuthToken !== authToken) {
