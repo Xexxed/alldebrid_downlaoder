@@ -239,9 +239,9 @@ export class DownloadEngine extends EventEmitter {
         };
 
         if (task.status !== 'completed') {
-          // Keep waiting_cloud so the background poller re-syncs magnet state;
-          // everything else resumes locally from disk.
-          if (task.status !== 'waiting_cloud') {
+          // Preserve explicit user pauses and cloud waiting; other unfinished
+          // tasks become eligible to resume locally from disk.
+          if (task.status !== 'waiting_cloud' && task.status !== 'paused') {
             task.status = 'ready_to_download';
           }
           for (const f of task.files) {
