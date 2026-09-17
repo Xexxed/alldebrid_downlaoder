@@ -1,47 +1,57 @@
-/**
- * Tier 0 + QoL Feature Tests
- * Covers: persistence round-trip, speed limiting, auto-retry with backoff,
- * task priorities, auth token middleware, new settings/stats endpoints.
- *
- * Run: node test/test_tier0_features.js
- */
-
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import http from 'http';
+import assert from 'node:assert/strict';
+import { Persistence } from '../server/persistence.js';
+import { DownloadEngine } from '../server/downloader.js';
 
-const results = [];
+let checks = 0;
 function check(name, cond, extra = '') {
-  results.push({ name, pass: !!cond });
-  console.log(`${cond ? '✅' : '❌'} ${name}${extra ? ` — ${extra}` : ''}`);
+  assert.ok(cond, `${name}${extra ? `: ${extra}` : ''}`);
+  checks++;
+  console.log(`PASS ${name}`);
 }
 
-function makeTempDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'adc-test-'));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitFor(predicate, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (!predicate()) {
+    assert.ok(Date.now() < deadline, 'Timed out waiting for fixture task');
+    await sleep(25);
+  }
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Fake AllDebrid client: unlock succeeds, downloads come from local HTTP server
-function makeFakeClient(downloadBase) {
+function makeFakeClient(downloadBase, sizeBytes) {
   return {
-    unlockLink: async (url) => ({
-      filename: url.includes('fail') ? 'fail.bin' : 'payload.bin',
-      filesize: 512 * 1024,
-      link: url.startsWith('http') ? url : `${downloadBase}/payload`,
-    }),
-    getMagnetFiles: async () => { throw new Error('not implemented'); },
-    getMagnetStatus: async () => { throw new Error('not implemented'); },
+    unlockLink: async (url) => {
+      assert.equal(new URL(url).origin, downloadBase);
+      return { filename: 'payload.bin', filesize: sizeBytes, link: url };
+    },
+    getMagnetFiles: async () => { throw new Error('Unexpected provider access'); },
+    getMagnetStatus: async () => { throw new Error('Unexpected provider access'); },
   };
 }
 
-function startPayloadServer(sizeBytes = 512 * 1024) {
+async function startPayloadServer(sizeBytes) {
   const payload = Buffer.alloc(sizeBytes, 0x41);
+  const requests = [];
   const server = http.createServer((req, res) => {
+    requests.push(req.url);
+    if (req.url === '/fail') {
+      res.writeHead(503, { 'Content-Length': 0 });
+      res.end();
+      return;
+    }
     const range = req.headers.range;
     if (range) {
-      const start = parseInt(range.replace(/bytes=/, '').split('-')[0], 10) || 0;
+      const start = Number(/^bytes=(\d+)-$/.exec(range)?.[1]);
+      if (!Number.isSafeInteger(start) || start >= payload.length) {
+        res.writeHead(416, { 'Content-Range': `bytes */${payload.length}` });
+        res.end();
+        return;
+      }
       const slice = payload.subarray(start);
       res.writeHead(206, { 'Content-Length': slice.length, 'Content-Range': `bytes ${start}-${payload.length - 1}/${payload.length}` });
       res.end(slice);
@@ -50,269 +60,222 @@ function startPayloadServer(sizeBytes = 512 * 1024) {
       res.end(payload);
     }
   });
-  return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
   });
+  return { server, requests, base: `http://127.0.0.1:${server.address().port}` };
+}
+
+async function withEngineFixture(sizeBytes, run) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'adc-tier0-'));
+  const engines = [];
+  let payload;
+  try {
+    payload = await startPayloadServer(sizeBytes);
+    const client = makeFakeClient(payload.base, sizeBytes);
+    const createEngine = (options = {}) => {
+      const engine = new DownloadEngine(client, {
+        downloadDir: path.join(tmp, 'dl'),
+        maxConcurrent: 1,
+        maxRetries: 0,
+        persistence: null,
+        ...options,
+        autoStart: false,
+      });
+      engines.push(engine);
+      return engine;
+    };
+    await run({ tmp, ...payload, createEngine });
+  } finally {
+    await Promise.all(engines.map((engine) => engine.stop()));
+    for (const engine of engines) engine.persistence?.close?.();
+    if (payload) {
+      await new Promise((resolve, reject) => payload.server.close((error) => error ? reject(error) : resolve()));
+    }
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 async function testPersistenceAndPriority() {
-  console.log('\n--- Persistence & Priority ---');
-  const tmp = makeTempDir();
-  const statePath = path.join(tmp, 'state.json');
-
-  const { Persistence } = await import('../server/persistence.js');
-  const { DownloadEngine } = await import('../server/downloader.js');
-
-  const { server: payloadServer, port } = await startPayloadServer();
-  const fakeClient = makeFakeClient(`http://127.0.0.1:${port}`);
-
-  const persistence = new Persistence(statePath, { flushDelayMs: 50 });
-  const engine = new DownloadEngine(fakeClient, {
-    downloadDir: path.join(tmp, 'dl'),
-    maxConcurrent: 2,
-    persistence,
-    maxRetries: 1,
+  const sizeBytes = 64 * 1024;
+  await withEngineFixture(sizeBytes, async ({ tmp, base, createEngine }) => {
+    const statePath = path.join(tmp, 'state.json');
+    const engine = createEngine({ persistence: new Persistence(statePath, { flushDelayMs: 50 }), maxRetries: 1 });
+    engine.start();
+    const files = (n) => Array.from({ length: n }, (_, i) => ({
+      name: `f${i}.bin`, relativePath: `f${i}.bin`, size: sizeBytes, link: `${base}/f${i}`,
+    }));
+    const t1 = await engine.addFolderTask('TaskLow', files(2), null, null, { priority: 2 });
+    const t2 = await engine.addFolderTask('TaskHigh', files(1), null, null, { priority: 0 });
+    engine.setTaskPriority(t1.id, 2);
+    engine.setTaskPriority(t2.id, 0);
+    await waitFor(() => t1.status === 'completed' && t2.status === 'completed');
+    check('tasks complete after download', t1.status === 'completed' && t2.status === 'completed');
+    check('downloaded files have exact fixture bytes', [...t1.files, ...t2.files].every((file) =>
+      fs.readFileSync(file.fullLocalPath).equals(Buffer.alloc(sizeBytes, 0x41))));
+    await engine.stop();
+    check('state file written', fs.existsSync(statePath));
+    const saved = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    check('state contains 2 tasks', saved.tasks.length === 2);
+    check('priorities persisted', saved.tasks.some((t) => t.priority === 0) && saved.tasks.some((t) => t.priority === 2));
+    const stats = engine.getStats();
+    check('stats bytes accumulated exactly', stats.totalBytes === sizeBytes * 3, `${stats.totalBytes} bytes`);
+    check('stats todayBytes set', stats.todayBytes === sizeBytes * 3);
+    engine.persistence.close();
+    const engine2 = createEngine({ persistence: new Persistence(statePath, { flushDelayMs: 50 }) });
+    engine2.start();
+    check('tasks restored into new engine', engine2.tasks.size === 2);
+    const restoredHigh = engine2.tasks.get(t2.id);
+    check('restored task keeps priority', restoredHigh?.priority === 0);
+    check('restored completed files detected', restoredHigh?.files.every((f) => f.status === 'completed'));
   });
-
-  // Two folder tasks with different priorities
-  const files = (n) => Array.from({ length: n }, (_, i) => ({ name: `f${i}.bin`, relativePath: `f${i}.bin`, size: 64 * 1024, link: `http://127.0.0.1:${port}/f${i}` }));
-  const t1 = await engine.addFolderTask('TaskLow', files(2), null, null, { priority: 2 });
-  const t2 = await engine.addFolderTask('TaskHigh', files(1), null, null, { priority: 0 });
-  engine.setTaskPriority(t1.id, 2);
-  engine.setTaskPriority(t2.id, 0);
-
-  // Wait for downloads to complete (small payloads, fast)
-  let waited = 0;
-  while (waited < 10000 && !(t1.status === 'completed' && t2.status === 'completed')) {
-    await sleep(100);
-    waited += 100;
-  }
-  check('tasks complete after download', t1.status === 'completed' && t2.status === 'completed', `t1=${t1.status} t2=${t2.status}`);
-
-  // Force flush and verify file on disk
-  engine.flushPersistenceSync();
-  check('state file written', fs.existsSync(statePath));
-  const saved = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-  check('state contains 2 tasks', saved.tasks.length === 2, `got ${saved.tasks.length}`);
-  check('priorities persisted', saved.tasks.some((t) => t.priority === 0) && saved.tasks.some((t) => t.priority === 2));
-
-  // Stats accumulated
-  const stats = engine.getStats();
-  check('stats bytes accumulated', stats.totalBytes > 0, `${stats.totalBytes} bytes`);
-  check('stats todayBytes set', stats.todayBytes > 0);
-
-  // New engine instance restores from same state file
-  const persistence2 = new Persistence(statePath, { flushDelayMs: 50 });
-  const engine2 = new DownloadEngine(fakeClient, {
-    downloadDir: path.join(tmp, 'dl'),
-    maxConcurrent: 2,
-    persistence: persistence2,
-  });
-  check('tasks restored into new engine', engine2.tasks.size === 2, `got ${engine2.tasks.size}`);
-  const restoredHigh = engine2.tasks.get(t2.id);
-  check('restored task keeps priority', restoredHigh?.priority === 0);
-  check('restored completed files detected', restoredHigh?.files.every((f) => f.status === 'completed'), restoredHigh?.files.map((f) => f.status).join(','));
-
-  payloadServer.close();
-  engine.speedLimiter.destroy();
-  clearInterval(engine.speedTrackerInterval);
-  clearInterval(engine.pollInterval);
-  clearInterval(engine.persistSweepInterval);
-  clearInterval(engine2.speedTrackerInterval);
-  clearInterval(engine2.pollInterval);
-  clearInterval(engine2.persistSweepInterval);
-  fs.rmSync(tmp, { recursive: true, force: true });
 }
 
 async function testSpeedLimit() {
-  console.log('\n--- Global Speed Limit ---');
-  const tmp = makeTempDir();
-  const { DownloadEngine } = await import('../server/downloader.js');
-
-  const { server: payloadServer, port } = await startPayloadServer(1024 * 1024); // 1 MB
-  const fakeClient = makeFakeClient(`http://127.0.0.1:${port}`);
-  const engine = new DownloadEngine(fakeClient, { downloadDir: path.join(tmp, 'dl'), maxConcurrent: 1, maxRetries: 0 });
-
-  engine.setSpeedLimit(256 * 1024); // 256 KB/s → ~4s expected
-  const start = Date.now();
-  const task = await engine.addDirectLinkTask(`http://127.0.0.1:${port}/payload`, 'limited');
-  let waited = 0;
-  while (waited < 20000 && task.status !== 'completed') {
-    await sleep(100);
-    waited += 100;
-  }
-  const elapsed = (Date.now() - start) / 1000;
-  check('limited download completes', task.status === 'completed', task.status);
-  check('speed limit enforced (>= ~3s)', elapsed >= 3, `elapsed ${elapsed.toFixed(1)}s`);
-
-  // Unlimited is instant again
-  engine.setSpeedLimit(0);
-  const start2 = Date.now();
-  const task2 = await engine.addDirectLinkTask(`http://127.0.0.1:${port}/payload`, 'unlimited');
-  waited = 0;
-  while (waited < 10000 && task2.status !== 'completed') {
-    await sleep(50);
-    waited += 50;
-  }
-  const elapsed2 = (Date.now() - start2) / 1000;
-  check('unlimited download fast', task2.status === 'completed' && elapsed2 < 2, `elapsed ${elapsed2.toFixed(2)}s`);
-
-  payloadServer.close();
-  engine.speedLimiter.destroy();
-  clearInterval(engine.speedTrackerInterval);
-  clearInterval(engine.pollInterval);
-  clearInterval(engine.persistSweepInterval);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  const sizeBytes = 1024 * 1024;
+  await withEngineFixture(sizeBytes, async ({ tmp, base, requests, createEngine }) => {
+    const engine = createEngine();
+    engine.start();
+    engine.setSpeedLimit(256 * 1024);
+    const start = performance.now();
+    const task = await engine.addDirectLinkTask(`${base}/limited`, 'limited', path.join(tmp, 'limited'));
+    await waitFor(() => task.status === 'completed', 20000);
+    const elapsed = (performance.now() - start) / 1000;
+    check('limited download completes', task.status === 'completed');
+    check('speed limit enforced (>= ~3s)', elapsed >= 3, `elapsed ${elapsed.toFixed(1)}s`);
+    check('limited download transferred exact bytes', task.downloadedSize === sizeBytes &&
+      fs.readFileSync(task.files[0].fullLocalPath).equals(Buffer.alloc(sizeBytes, 0x41)));
+    engine.setSpeedLimit(0);
+    const start2 = performance.now();
+    const task2 = await engine.addDirectLinkTask(`${base}/unlimited`, 'unlimited', path.join(tmp, 'unlimited'));
+    await waitFor(() => task2.status === 'completed');
+    const elapsed2 = (performance.now() - start2) / 1000;
+    check('unlimited download fast', elapsed2 < 2, `elapsed ${elapsed2.toFixed(2)}s`);
+    check('speed scenarios use distinct targets', task.files[0].fullLocalPath !== task2.files[0].fullLocalPath);
+    check('unlimited download transferred exact bytes', task2.downloadedSize === sizeBytes &&
+      fs.readFileSync(task2.files[0].fullLocalPath).equals(Buffer.alloc(sizeBytes, 0x41)));
+    check('both speed scenarios fetched payloads', requests.includes('/limited') && requests.includes('/unlimited'));
+    check('speed stats include both downloads', engine.getStats().totalBytes === sizeBytes * 2);
+  });
 }
 
 async function testAutoRetry() {
-  console.log('\n--- Auto-Retry with Backoff ---');
-  const tmp = makeTempDir();
-  const { DownloadEngine } = await import('../server/downloader.js');
-
-  const { server: payloadServer, port } = await startPayloadServer();
-  const fakeClient = makeFakeClient(`http://127.0.0.1:${port}`);
-  const engine = new DownloadEngine(fakeClient, {
-    downloadDir: path.join(tmp, 'dl'),
-    maxConcurrent: 1,
-    maxRetries: 2,
-    retryBackoffMs: [100, 150],
+  await withEngineFixture(512 * 1024, async ({ base, requests, createEngine }) => {
+    const engine = createEngine({ maxRetries: 2, retryBackoffMs: [100, 150] });
+    engine.start();
+    let taskErrorEvents = 0;
+    engine.on('taskError', () => taskErrorEvents++);
+    const task = await engine.addDirectLinkTask(`${base}/fail`, 'doomed');
+    check('task created', !!task);
+    await waitFor(() => task.status === 'error');
+    const file = task.files[0];
+    check('file exhausted retries to error', file.status === 'error');
+    check('retry count tracked', file.retryCount === 2);
+    check('retry fixture received exactly three attempts', requests.filter((url) => url === '/fail').length === 3);
+    check('taskError event emitted', taskErrorEvents >= 1);
+    check('task status error', task.status === 'error');
+    engine.retryTask(task.id);
+    check('manual retry resets retryCount', task.files[0].retryCount === 0 && task.files[0].status !== 'error');
+    check('manual retry clears task error state', task.status !== 'error');
   });
-
-  let taskErrorEvents = 0;
-  engine.on('taskError', () => taskErrorEvents++);
-
-  // Port 9 (discard) refuses connections → fetch always fails
-  const task = await engine.addDirectLinkTask('http://127.0.0.1:9/fail', 'doomed');
-  check('task created', !!task);
-
-  // Wait through both backoff windows (100 + 150ms) + margin
-  await sleep(1200);
-  const file = task.files[0];
-  check('file exhausted retries → error', file.status === 'error', `status=${file.status}`);
-  check('retry count tracked', (file.retryCount || 0) >= 2, `retryCount=${file.retryCount}`);
-  check('taskError event emitted', taskErrorEvents >= 1, `events=${taskErrorEvents}`);
-  check('task status error', task.status === 'error');
-
-  // Manual retry resets counters (status may flip to 'downloading' synchronously, so check counter only)
-  engine.retryTask(task.id);
-  check('manual retry resets retryCount', task.files[0].retryCount === 0 && task.files[0].status !== 'error');
-  check('manual retry clears task error state', task.status !== 'error');
-
-  payloadServer.close();
-  engine.speedLimiter.destroy();
-  clearInterval(engine.speedTrackerInterval);
-  clearInterval(engine.pollInterval);
-  clearInterval(engine.persistSweepInterval);
-  fs.rmSync(tmp, { recursive: true, force: true });
 }
 
 async function testServerAuthAndEndpoints() {
-  console.log('\n--- Auth Middleware + New Endpoints ---');
-  const tmp = makeTempDir();
-  // APP_DATA_DIR isolates CONFIG_DIR so settings POSTs write .env into the sandbox, not the project root
-  process.env.APP_DATA_DIR = tmp;
-  process.env.AUTH_TOKEN = 'test-secret-token';
-  process.env.STATE_PATH = path.join(tmp, 'state.json');
-  process.env.PORT = '3123';
-  process.env.DOWNLOAD_DIR = path.join(tmp, 'dl');
-
-  const { startServer } = await import('../server/server.js');
-  const instance = await startServer(3123);
-  const base = 'http://127.0.0.1:3123';
-
-  // auth-check is public
-  const noTok = await fetch(`${base}/api/auth-check`);
-  const noTokData = await noTok.json();
-  check('auth-check public & reports lock', noTok.status === 200 && noTokData.authRequired === true);
-
-  const badTok = await fetch(`${base}/api/auth-check`, { headers: { Authorization: 'Bearer wrong' } });
-  const badTokData = await badTok.json();
-  check('auth-check rejects wrong token', badTokData.tokenValid === false);
-
-  const goodTok = await fetch(`${base}/api/auth-check`, { headers: { Authorization: 'Bearer test-secret-token' } });
-  check('auth-check accepts valid token', (await goodTok.json()).tokenValid === true);
-
-  // Protected endpoints reject missing token
-  const blocked = await fetch(`${base}/api/downloads`);
-  check('API returns 401 without token', blocked.status === 401);
-
-  const blockedQuery = await fetch(`${base}/api/settings?token=wrong`);
-  check('API returns 401 with wrong query token', blockedQuery.status === 401);
-
-  // Accepts bearer token
-  const ok = await fetch(`${base}/api/downloads`, { headers: { Authorization: 'Bearer test-secret-token' } });
-  check('API accepts bearer token', ok.status === 200);
-
-  // Accepts query token (WebSocket clients use this)
-  const okQuery = await fetch(`${base}/api/stats?token=test-secret-token`);
-  check('API accepts query token', okQuery.status === 200);
-  const stats = await okQuery.json();
-  check('stats endpoint shape', typeof stats.totalBytes === 'number' && typeof stats.todayBytes === 'number');
-
-  // Settings round-trip with new keys
-  const setRes = await fetch(`${base}/api/settings`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-secret-token' },
-    body: JSON.stringify({ newSpeedLimitKbps: 512, newMaxRetries: 5, newMinFreeGb: 2, newAuthToken: 'test-secret-token' }),
-  });
-  const setData = await setRes.json();
-  check('settings save succeeds', setData.success === true, JSON.stringify(data_err(setData)));
-  check('speed limit persisted in response', setData.settings.speedLimitKbps === 512);
-  check('max retries persisted', setData.settings.maxRetries === 5);
-  check('min free gb persisted', setData.settings.minFreeGb === 2);
-  check('token masked not leaked', setData.settings.authTokenMasked.includes('...') && !setData.settings.authTokenMasked.includes('secret'));
-
-  // Invalid schedule rejected
-  const badSched = await fetch(`${base}/api/settings`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-secret-token' },
-    body: JSON.stringify({ newScheduleEnabled: true, newScheduleStart: '99:99', newScheduleEnd: '07:00' }),
-  });
-  check('invalid schedule window rejected', badSched.status === 400);
-
-  // Bulk delete validation
-  const bulkNoIds = await fetch(`${base}/api/cloud-magnets/delete-bulk`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-secret-token' },
-    body: JSON.stringify({}),
-  });
-  check('bulk delete requires ids', bulkNoIds.status === 400);
-
-  // Priority endpoint validation
-  const badPrio = await fetch(`${base}/api/downloads/nope/priority`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-secret-token' },
-    body: JSON.stringify({ priority: 1 }),
-  });
-  check('priority on missing task fails cleanly', badPrio.status === 400);
-
-  await new Promise((resolve) => instance.server.close(resolve));
-  delete process.env.AUTH_TOKEN;
-  delete process.env.STATE_PATH;
-  fs.rmSync(tmp, { recursive: true, force: true });
-}
-
-function data_err(obj) {
-  return obj.error || '';
-}
-
-(async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'adc-tier0-app-'));
+  let instance;
+  let providerCalls = 0;
+  const unexpectedProviderCall = async () => {
+    providerCalls++;
+    throw new Error('Unexpected provider access');
+  };
+  const client = {
+    apiKey: '',
+    unlockLink: unexpectedProviderCall,
+    getMagnetFiles: unexpectedProviderCall,
+    getMagnetStatus: unexpectedProviderCall,
+    uploadMagnet: unexpectedProviderCall,
+    deleteMagnet: unexpectedProviderCall,
+    setApiKey: () => {},
+  };
+  const persistence = {
+    data: { tasks: [], stats: { totalBytes: 0, activeSeconds: 0, peakSpeed: 0, perDay: {} } },
+    scheduleFlush() {},
+    flushSync() {},
+    async flush() {},
+  };
   try {
-    await testPersistenceAndPriority();
-    await testSpeedLimit();
-    await testAutoRetry();
-    await testServerAuthAndEndpoints();
-
-    const failed = results.filter((r) => !r.pass);
-    console.log(`\n========== ${results.length - failed.length}/${results.length} checks passed ==========`);
-    if (failed.length > 0) {
-      console.error('FAILED CHECKS:', failed.map((f) => f.name).join(' | '));
-      process.exit(1);
-    }
-    process.exit(0);
-  } catch (err) {
-    console.error('❌ Test suite crashed:', err);
-    process.exit(1);
+    const { createApplication } = await import('../server/server.js');
+    instance = createApplication({
+      config: {
+        configDir: tmp,
+        downloadDir: path.join(tmp, 'dl'),
+        port: 0,
+        host: '127.0.0.1',
+        apiKey: '',
+        authToken: 'test-secret-token',
+        maxConcurrent: 1,
+        maxRetries: 0,
+        speedLimitKbps: 0,
+        minFreeGb: 0,
+        jackettUrl: '',
+        jackettApiKey: '',
+        scheduleEnabled: false,
+        scheduleStart: '00:00',
+        scheduleEnd: '07:00',
+        scheduleLimitKbps: 0,
+      },
+      client,
+      persistence,
+    });
+    await instance.start(0);
+    const base = `http://127.0.0.1:${instance.port}`;
+    const request = async (route, options) => {
+      const response = await fetch(`${base}${route}`, options);
+      return { status: response.status, data: await response.json() };
+    };
+    const headers = { Authorization: 'Bearer test-secret-token', 'Content-Type': 'application/json' };
+    const noTok = await request('/api/auth-check');
+    check('auth-check public & reports lock', noTok.status === 200 && noTok.data.authRequired === true);
+    const badTok = await request('/api/auth-check', { headers: { Authorization: 'Bearer wrong' } });
+    check('auth-check rejects wrong token', badTok.data.tokenValid === false);
+    const goodTok = await request('/api/auth-check', { headers });
+    check('auth-check accepts valid token', goodTok.data.tokenValid === true);
+    check('API returns 401 without token', (await request('/api/downloads')).status === 401);
+    check('API returns 401 with wrong query token', (await request('/api/settings?token=wrong')).status === 401);
+    const downloads = await request('/api/downloads', { headers });
+    check('API accepts bearer token', downloads.status === 200);
+    check('injected queue starts empty', instance.engine.tasks.size === 0);
+    check('API rejects query-only authentication', (await request('/api/stats?token=test-secret-token')).status === 401);
+    const stats = await request('/api/stats', { headers });
+    check('stats endpoint shape', stats.status === 200 && typeof stats.data.totalBytes === 'number' && typeof stats.data.todayBytes === 'number');
+    const setRes = await request('/api/settings', {
+      method: 'POST', headers,
+      body: JSON.stringify({ newSpeedLimitKbps: 512, newMaxRetries: 5, newMinFreeGb: 2, newAuthToken: 'test-secret-token' }),
+    });
+    check('settings save succeeds', setRes.status === 200 && setRes.data.success === true, setRes.data.error);
+    check('speed limit persisted in response', setRes.data.settings.speedLimitKbps === 512);
+    check('max retries persisted', setRes.data.settings.maxRetries === 5);
+    check('min free gb persisted', setRes.data.settings.minFreeGb === 2);
+    check('token masked not leaked', setRes.data.settings.authTokenMasked.includes('...') && !setRes.data.settings.authTokenMasked.includes('secret'));
+    const badSched = await request('/api/settings', {
+      method: 'POST', headers,
+      body: JSON.stringify({ newScheduleEnabled: true, newScheduleStart: '99:99', newScheduleEnd: '07:00' }),
+    });
+    check('invalid schedule window rejected', badSched.status === 400);
+    const bulkNoIds = await request('/api/cloud-magnets/delete-bulk', { method: 'POST', headers, body: '{}' });
+    check('bulk delete requires ids', bulkNoIds.status === 400);
+    const badPrio = await request('/api/downloads/nope/priority', { method: 'POST', headers, body: JSON.stringify({ priority: 1 }) });
+    check('priority on missing task fails cleanly', badPrio.status === 400);
+    check('application made no provider calls', providerCalls === 0);
+  } finally {
+    if (instance) await instance.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
-})();
+}
+
+await testPersistenceAndPriority();
+await testSpeedLimit();
+await testAutoRetry();
+await testServerAuthAndEndpoints();
+console.log(`Tier0: ${checks} checks passed`);

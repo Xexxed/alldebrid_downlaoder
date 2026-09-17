@@ -4,7 +4,16 @@
 
 import { parseDownloadInput, flattenFileTree, sanitizePathSegment } from '../server/alldebrid.js';
 import assert from 'assert';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { DownloadEngine } from '../server/downloader.js';
+import { normalizeMagnetResponse } from '../server/alldebrid.js';
 
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'adc-parser-'));
+const baseDownloadDir = path.join(tmp, 'downloads');
+let mockEngine;
+try {
 console.log('--- Running Tests for AllDebrid Downloader ---');
 
 // Test 1: Sanitization
@@ -154,8 +163,6 @@ assert.strictEqual(unwrapFlattened[0].relativePath, 'Season 1/Chuck.S01E01.mkv')
 assert.strictEqual(unwrapFlattened[1].relativePath, 'Featurettes/Declassified.mkv');
 
 // Verify that joining with downloadDir + torrentName produces exactly 1 Chuck folder
-import path from 'path';
-const baseDownloadDir = 'F:\\Torrents';
 const torrentName = 'Chuck (2007) Season 1-5 S01-S05 (1080p BluRay x265 HEVC 10bit AAC 5.1 Kappa) [QxR]';
 const torrentFolder = path.join(baseDownloadDir, torrentName);
 
@@ -164,34 +171,30 @@ const finalFilePath2 = path.join(torrentFolder, unwrapFlattened[1].relativePath.
 
 assert.strictEqual(
   finalFilePath1,
-  'F:\\Torrents\\Chuck (2007) Season 1-5 S01-S05 (1080p BluRay x265 HEVC 10bit AAC 5.1 Kappa) [QxR]\\Season 1\\Chuck.S01E01.mkv'
+  path.join(baseDownloadDir, torrentName, 'Season 1', 'Chuck.S01E01.mkv')
 );
 assert.strictEqual(
   finalFilePath2,
-  'F:\\Torrents\\Chuck (2007) Season 1-5 S01-S05 (1080p BluRay x265 HEVC 10bit AAC 5.1 Kappa) [QxR]\\Featurettes\\Declassified.mkv'
+  path.join(baseDownloadDir, torrentName, 'Featurettes', 'Declassified.mkv')
 );
 
 console.log('✅ Top-Level Folder Wrapper Unwrapping & Path Assembly passed (No redundant folders!)');
 
 // Test 5: Single-file root torrent (e.g. Scary Movie) setupTaskFiles resolution
 console.log('Test 5: Single-File Root Torrent Resolution');
-import { DownloadEngine } from '../server/downloader.js';
-
-const mockEngine = new DownloadEngine({
-  getMagnetFiles: async () => ({ magnets: [] }),
-  getMagnetStatus: async () => ({ magnets: [] }),
-  unlockLink: async () => ({}),
-}, { downloadDir: 'F:\\Torrents' });
-
-clearInterval(mockEngine.speedTrackerInterval);
-clearInterval(mockEngine.pollInterval);
+mockEngine = new DownloadEngine({
+  getMagnetFiles: async () => { throw new Error('Unexpected provider access'); },
+  getMagnetStatus: async () => { throw new Error('Unexpected provider access'); },
+  unlockLink: async () => { throw new Error('Unexpected provider access'); },
+}, { downloadDir: baseDownloadDir, persistence: null, autoStart: false });
+mockEngine.start();
 
 const scaryMovieTask = {
   id: 'magnet_686406964_123',
   magnetId: 686406964,
   name: 'Torrent_686406964',
-  baseOutputDir: 'F:\\Torrents',
-  outputDir: 'F:\\Torrents\\Torrent_686406964',
+  baseOutputDir: baseDownloadDir,
+  outputDir: path.join(baseDownloadDir, 'Torrent_686406964'),
   files: [],
 };
 
@@ -205,17 +208,16 @@ const scaryMovieTree = [
 
 mockEngine.setupTaskFiles(scaryMovieTask, scaryMovieTree);
 assert.strictEqual(scaryMovieTask.name, 'Scary Movie Extended Cut 2026 1080p WEB-DL HEVC x265 5.1 BONE.mkv');
-assert.strictEqual(scaryMovieTask.outputDir, 'F:\\Torrents');
+assert.strictEqual(scaryMovieTask.outputDir, baseDownloadDir);
 assert.strictEqual(
   scaryMovieTask.files[0].fullLocalPath,
-  path.join('F:\\Torrents', 'Scary Movie Extended Cut 2026 1080p WEB-DL HEVC x265 5.1 BONE.mkv')
+  path.join(baseDownloadDir, 'Scary Movie Extended Cut 2026 1080p WEB-DL HEVC x265 5.1 BONE.mkv')
 );
 
 console.log('✅ Single-file cloud torrent name & destination path resolution passed');
 
 // Test 6: normalizeMagnetResponse for AllDebrid response variations
 console.log('Test 6: normalizeMagnetResponse shape handling');
-import { normalizeMagnetResponse } from '../server/alldebrid.js';
 
 // Case A: Array of magnets
 const resArray = { magnets: [{ id: 686406964, filename: 'Backrooms 2026.mkv', statusCode: 4 }] };
@@ -238,3 +240,7 @@ assert.strictEqual(normalizeMagnetResponse({ magnets: null }), null);
 
 console.log('✅ normalizeMagnetResponse handles all API response shapes cleanly');
 console.log('--- ALL UNIT TESTS PASSED SUCCESSFULLY! ---');
+} finally {
+  if (mockEngine) await mockEngine.stop();
+  fs.rmSync(tmp, { recursive: true, force: true });
+}

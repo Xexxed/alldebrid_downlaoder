@@ -1,19 +1,10 @@
-import { fetchRapidgatorFolder, parseDownloadInput } from '../server/alldebrid.js';
-import { detectExtractor, detectArchiveGroups, isArchiveFile } from '../server/extractor.js';
-import fs from 'fs';
-import path from 'path';
+import { parseDownloadInput } from '../server/alldebrid.js';
+import { detectArchiveGroups, isArchiveFile } from '../server/extractor.js';
 
 async function runVerification() {
   console.log('=== STARTING ALLDEBRID DOWNLOADER VERIFICATION ===\n');
 
-  // Test 1: Extractor Tooling & Archive Detection
-  console.log('--- Test 1: Archive Extractor Tooling & Detection ---');
-  const extractor = detectExtractor();
-  console.log('Detected Extractor:', extractor);
-  if (!extractor || !extractor.path) {
-    throw new Error('No extractor tool detected on system!');
-  }
-  console.log('✓ Extractor tooling verified.');
+  console.log('--- Test 1: Archive Detection ---');
 
   const sampleFiles = [
     'archive_dataset.part1.rar',

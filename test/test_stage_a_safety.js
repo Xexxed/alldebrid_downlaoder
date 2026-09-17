@@ -1,154 +1,129 @@
-/**
- * Stage A safety regressions: no broad deletion, no unrelated extraction scan,
- * no overwrite flags. Fully offline with unique temp directories.
- *
- * Run: node --test test/test_stage_a_safety.js
- */
-
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 import assert from 'node:assert/strict';
-import { test, afterEach } from 'node:test';
+import { test } from 'node:test';
+import { DownloadEngine } from '../server/downloader.js';
+import { extractTaskArchives, detectArchiveGroups, isArchiveFile } from '../server/extractor.js';
 
-const { DownloadEngine } = await import('../server/downloader.js');
-const { extractTaskArchives } = await import('../server/extractor.js');
-
-class IsolatedEngine extends DownloadEngine {
-  ensureDownloadDir() {}
-  startBackgroundLoops() {}
-}
-
-const cleanupPaths = [];
-function makeTempDir(prefix) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  cleanupPaths.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  while (cleanupPaths.length) {
-    const dir = cleanupPaths.pop();
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
-  }
-});
+const unavailable = {
+  code: 'EXTRACTION_UNAVAILABLE',
+  message: 'Archive extraction is unavailable until a staged, owned, no-clobber extraction pipeline is implemented.',
+};
 
 function makeTask(id, outputDir, files = []) {
   return {
     id,
-    magnetId: null,
     name: id,
-    type: 'folder',
     status: 'downloading',
-    cloudStatus: null,
-    cloudProgress: 100,
-    totalSize: files.reduce((a, f) => a + f.size, 0),
-    downloadedSize: 0,
-    progress: 0,
-    speed: 0,
-    eta: 0,
-    error: null,
     outputDir,
-    baseOutputDir: path.dirname(outputDir),
-    selectedPaths: null,
     autoExtract: false,
     deleteArchiveAfterExtract: false,
-    extractionStatus: null,
-    extractionError: null,
-    extractionMessage: null,
     extracted: false,
     isExtracting: false,
-    addedAt: new Date().toISOString(),
-    completedAt: null,
-    priority: 1,
     files,
   };
 }
 
-function makeFile(taskId, idx, fullPath, size = 10) {
-  return {
-    id: `${taskId}_f${idx}`,
-    taskId,
-    name: path.basename(fullPath),
-    relativePath: path.basename(fullPath),
-    fullLocalPath: fullPath,
-    size,
-    downloaded: 0,
-    link: null,
-    directUrl: null,
-    status: 'pending',
-    error: null,
-    speed: 0,
-    bytesSample: 0,
-    progress: 0,
-    retryCount: 0,
-    retryAt: null,
-  };
+for (const deleteFiles of [false, true]) {
+  test(`cancelTask is metadata-only with legacy deleteFiles=${deleteFiles}`, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adc-cancel-safe-'));
+    let engine;
+    try {
+      const payloadPath = path.join(dir, 'payload.bin');
+      const unrelatedPath = path.join(dir, 'unrelated.txt');
+      fs.writeFileSync(payloadPath, 'payload');
+      fs.writeFileSync(unrelatedPath, 'keep me');
+      engine = new DownloadEngine({}, { downloadDir: dir, autoStart: false });
+      const task = makeTask('cancel', dir, [{ id: 'cancel-file', fullLocalPath: payloadPath }]);
+      engine.tasks.set(task.id, task);
+
+      assert.equal(engine.cancelTask(task.id, deleteFiles), true);
+      assert.equal(engine.tasks.has(task.id), false);
+      assert.equal(fs.readFileSync(payloadPath, 'utf8'), 'payload');
+      assert.equal(fs.readFileSync(unrelatedPath, 'utf8'), 'keep me');
+      assert.deepEqual(fs.readdirSync(dir).sort(), ['payload.bin', 'unrelated.txt']);
+    } finally {
+      await engine?.stop();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 }
 
-test('cancelTask preserves unrelated files in a shared folder', () => {
-  const sharedDir = makeTempDir('adc-shared-');
-  const unrelatedPath = path.join(sharedDir, 'unrelated.txt');
-  fs.writeFileSync(unrelatedPath, 'keep me');
+test('extraction rejects task archives without mutating payloads, unrelated data or metadata', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adc-extract-safe-'));
+  try {
+    const archivePath = path.join(dir, 'sample.zip');
+    const markerPath = path.join(dir, 'existing-output.txt');
+    const unrelatedPath = path.join(dir, 'unrelated.zip');
+    const archive = Buffer.from('PK\x05\x06' + '\0'.repeat(18));
+    fs.writeFileSync(archivePath, archive);
+    fs.writeFileSync(markerPath, 'original content');
+    fs.writeFileSync(unrelatedPath, 'unrelated archive');
+    const task = makeTask('blocked', dir, [{ name: 'sample.zip', fullLocalPath: archivePath }]);
+    const originalTask = structuredClone(task);
 
-  const engine = new IsolatedEngine({}, { downloadDir: path.dirname(sharedDir), autoStart: false });
-  const task = makeTask('t1', sharedDir, [makeFile('t1', 0, path.join(sharedDir, 'a.bin'))]);
-  engine.tasks.set('t1', task);
-
-  const removed = engine.cancelTask('t1');
-  assert.equal(removed, true);
-  assert.equal(engine.tasks.has('t1'), false);
-  assert.equal(fs.existsSync(unrelatedPath), true, 'unrelated file must survive task removal');
-  assert.equal(fs.existsSync(sharedDir), true, 'shared folder must never be deleted');
-  engine.speedLimiter.destroy();
-});
-
-test('cancelTask ignores legacy deleteFiles flag and deletes nothing', () => {
-  const sharedDir = makeTempDir('adc-shared2-');
-  const payloadPath = path.join(sharedDir, 'a.bin');
-  fs.writeFileSync(payloadPath, 'x');
-
-  const engine = new IsolatedEngine({}, { downloadDir: path.dirname(sharedDir), autoStart: false });
-  engine.tasks.set('t2', makeTask('t2', sharedDir, [makeFile('t2', 0, payloadPath)]));
-
-  assert.equal(engine.cancelTask('t2', true), true);
-  assert.equal(fs.existsSync(payloadPath), true, 'payload must survive even with legacy deleteFiles=true');
-  engine.speedLimiter.destroy();
-});
-
-test('extractTaskArchives never scans directory for unrelated archives', async () => {
-  const targetDir = makeTempDir('adc-extract-');
-  fs.writeFileSync(path.join(targetDir, 'unrelated.zip'), 'not a real archive');
-
-  const task = makeTask('t3', targetDir, []);
-  const result = await extractTaskArchives(task, false);
-  assert.equal(result.extractedCount, 0);
-  assert.match(result.message, /No archive files detected/);
-  assert.equal(fs.existsSync(path.join(targetDir, 'unrelated.zip')), true, 'unrelated archive must not be processed or removed');
-});
-
-test('extraction preserves existing outputs and never deletes parts', async () => {
-  const targetDir = makeTempDir('adc-extract2-');
-  const markerPath = path.join(targetDir, 'existing-output.txt');
-  fs.writeFileSync(markerPath, 'original content');
-  const archivePath = path.join(targetDir, 'sample.zip');
-  fs.writeFileSync(archivePath, 'PK\x05\x06' + '\0'.repeat(18));
-
-  const task = makeTask('t4', targetDir, [makeFile('t4', 0, archivePath, 3)]);
-  const result = await extractTaskArchives(task, true);
-
-  assert.equal(result.extractedCount, 1, 'valid empty zip is extracted (extractor runs)');
-  assert.deepEqual(result.deletedFiles, [], 'part cleanup is disabled in safe baseline');
-  assert.equal(fs.existsSync(archivePath), true, 'parts are never deleted in safe baseline');
-  assert.equal(fs.readFileSync(markerPath, 'utf-8'), 'original content');
-});
-
-test('extraction flags select no-overwrite mode for detected extractors', async () => {
-  const { detectExtractor } = await import('../server/extractor.js');
-  const extractor = detectExtractor();
-  if (extractor.type === '7z') {
-    assert.equal(extractor.type, '7z');
+    for (const deleteParts of [false, true]) {
+      await assert.rejects(extractTaskArchives(task, deleteParts), unavailable);
+      assert.deepEqual(task, originalTask);
+      assert.deepEqual(fs.readFileSync(archivePath), archive);
+      assert.equal(fs.readFileSync(markerPath, 'utf8'), 'original content');
+      assert.equal(fs.readFileSync(unrelatedPath, 'utf8'), 'unrelated archive');
+      assert.deepEqual(fs.readdirSync(dir).sort(), ['existing-output.txt', 'sample.zip', 'unrelated.zip']);
+    }
+    await assert.rejects(extractTaskArchives(makeTask('empty', dir)), unavailable);
+    const missingDir = path.join(dir, 'not-created');
+    await assert.rejects(extractTaskArchives(makeTask('missing', missingDir)), unavailable);
+    assert.equal(fs.existsSync(missingDir), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
-  const source = fs.readFileSync(new URL('../server/extractor.js', import.meta.url), 'utf-8');
-  assert.doesNotMatch(source, /-aoa|-o\+/);
+});
+
+test('extraction rejects without accessing task properties, filesystem or child processes', async (t) => {
+  const calls = [];
+  const denied = (name) => () => {
+    calls.push(name);
+    throw new Error(`Unexpected access: ${name}`);
+  };
+  try {
+    for (const name of ['existsSync', 'statSync', 'readdirSync', 'readFileSync', 'mkdirSync', 'writeFileSync', 'unlinkSync', 'rmSync', 'createReadStream', 'createWriteStream']) {
+      t.mock.method(fs, name, denied(`fs.${name}`));
+    }
+    for (const name of ['stat', 'readdir', 'readFile', 'mkdir', 'writeFile', 'unlink', 'rm', 'open']) {
+      t.mock.method(fs.promises, name, denied(`fs.promises.${name}`));
+    }
+    for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) {
+      t.mock.method(childProcess, name, denied(`childProcess.${name}`));
+    }
+    syncBuiltinESMExports();
+    const task = new Proxy({}, { get: denied('task property') });
+    await assert.rejects(extractTaskArchives(task, true), unavailable);
+    await assert.rejects(extractTaskArchives(null), unavailable);
+    await assert.rejects(extractTaskArchives(), unavailable);
+    assert.deepEqual(calls, []);
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+});
+
+test('pure archive detection retains supported names and multipart grouping', () => {
+  for (const name of ['sample.ZIP', 'sample.rar', 'sample.part01.rar', 'sample.r00', 'sample.7z.001', 'sample.zip.002', 'sample.z01', 'sample.tar.gz', 'sample.iso']) {
+    assert.equal(isArchiveFile(name), true, name);
+  }
+  for (const name of [undefined, null, 12, '', 'readme.txt']) {
+    assert.equal(isArchiveFile(name), false);
+  }
+  const baseDir = path.resolve('metadata-only');
+  const groups = detectArchiveGroups(['movie.part02.rar', 'movie.part01.rar', 'bundle.7z.002', 'bundle.7z.001', 'single.zip', 'readme.txt'], baseDir);
+  assert.deepEqual(groups.map((group) => group.type), ['multipart_rar', 'split_archive', 'single_archive']);
+  assert.equal(groups[0].entryFile, path.join(baseDir, 'movie.part01.rar'));
+  assert.equal(groups[0].partFiles.length, 2);
+  assert.equal(groups[1].entryFile, path.join(baseDir, 'bundle.7z.001'));
+  assert.equal(groups[2].entryFile, path.join(baseDir, 'single.zip'));
+  const objects = detectArchiveGroups([{ name: 'archive.zip', fullLocalPath: path.join(baseDir, 'archive.zip') }]);
+  assert.equal(objects[0].entryFile, path.join(baseDir, 'archive.zip'));
 });

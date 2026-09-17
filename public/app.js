@@ -611,7 +611,7 @@ function createTaskCardHtml(task) {
               <span class="telemetry-badge">P:${priorityLabels[currentPriority]}</span>
               <span class="telemetry-badge">${task.files?.length || task.fileCount || 1} FILES</span>
               <span class="telemetry-badge">${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}</span>
-              ${task.autoExtract && !task.extracted && !isCompleted ? `<span class="telemetry-badge" style="color:var(--accent-electric);border-color:rgba(0,191,255,0.4)">⚡ AUTO-EXTRACT</span>` : ''}
+              ${task.autoExtract && !task.extracted ? `<span class="telemetry-badge">AUTO-EXTRACTION UNAVAILABLE</span>` : ''}
               ${task.extracted ? `<span class="telemetry-badge" style="color:var(--accent-success);border-color:rgba(0,255,102,0.4)">✓ EXTRACTED</span>` : ''}
               ${task.extractionError ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)">EXTRACTION: ${task.extractionError}</span>` : ''}
               ${task.error ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)">${task.error}</span>` : ''}
@@ -676,9 +676,9 @@ function createTaskCardHtml(task) {
         ` : ''}
 
         ${isCompleted && !task.extracted ? `
-          <button class="btn btn-secondary btn-sm" onclick="manualExtractTask('${task.id}')" title="Extract archives in this folder">
+          <button class="btn btn-secondary btn-sm" disabled title="Archive extraction is unavailable until safe staging and no-clobber publishing are implemented">
             <span class="btn-svg">${ICONS.archive}</span>
-            <span>EXTRACT</span>
+            <span>EXTRACTION UNAVAILABLE</span>
           </button>
         ` : ''}
 
@@ -854,16 +854,8 @@ window.openLocalFolder = async function (taskId) {
   }
 };
 
-window.manualExtractTask = async function (taskId) {
-  try {
-    showToast('Initiating archive extraction...', 'info');
-    const res = await apiFetch(`/api/downloads/${taskId}/extract`, { method: 'POST' });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    showToast(data.result?.message || 'Archive extracted successfully!', 'success');
-  } catch (err) {
-    showToast(`Extraction failed: ${err.message}`, 'error');
-  }
+window.manualExtractTask = function () {
+  showToast('Archive extraction is unavailable until a staged, owned, no-clobber extraction pipeline is implemented.', 'info');
 };
 
 window.pauseTask = async function (taskId) {
@@ -1273,30 +1265,11 @@ function openDownloadReview(previews) {
     }
   }
 
-  // Detect if archives exist in the preview files
-  const hasArchiveFiles = !!primaryItem.hasArchives || (primaryItem.flattenedFiles && primaryItem.flattenedFiles.some((f) => /\.(rar|zip|7z|tar|gz|r\d{2}|part\d+\.rar)$/i.test(f.name)));
-
-  if (elements.reviewAutoExtractCheckbox) {
-    elements.reviewAutoExtractCheckbox.checked = hasArchiveFiles;
-  }
-
-  if (elements.reviewDeletePartsCheckbox) {
-    elements.reviewDeletePartsCheckbox.checked = false;
-    elements.reviewDeletePartsCheckbox.disabled = !hasArchiveFiles;
-    if (elements.deletePartsCard) {
-      elements.deletePartsCard.style.opacity = hasArchiveFiles ? '1' : '0.4';
+  for (const checkbox of [elements.reviewAutoExtractCheckbox, elements.reviewDeletePartsCheckbox]) {
+    if (checkbox) {
+      checkbox.checked = false;
+      checkbox.disabled = true;
     }
-  }
-
-  if (elements.reviewAutoExtractCheckbox && elements.reviewDeletePartsCheckbox) {
-    elements.reviewAutoExtractCheckbox.onchange = () => {
-      const enabled = elements.reviewAutoExtractCheckbox.checked;
-      elements.reviewDeletePartsCheckbox.disabled = !enabled;
-      if (!enabled) elements.reviewDeletePartsCheckbox.checked = false;
-      if (elements.deletePartsCard) {
-        elements.deletePartsCard.style.opacity = enabled ? '1' : '0.4';
-      }
-    };
   }
 
   // Initialize selected files (skip already complete files by default if desired or include uncompleted)
@@ -1423,8 +1396,8 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
     return;
   }
 
-  const autoExtract = elements.reviewAutoExtractCheckbox ? elements.reviewAutoExtractCheckbox.checked : false;
-  const deleteArchiveAfterExtract = elements.reviewDeletePartsCheckbox ? (autoExtract && elements.reviewDeletePartsCheckbox.checked) : false;
+  const autoExtract = false;
+  const deleteArchiveAfterExtract = false;
 
   elements.confirmReviewDownloadBtn.disabled = true;
   elements.confirmReviewDownloadBtn.textContent = 'DISPATCHING PIPELINE...';

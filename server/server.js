@@ -6,12 +6,11 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
-import fs from 'fs';
+import globalFilesystem from 'fs';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import multer from 'multer';
-import { spawn } from 'child_process';
-import dotenv from 'dotenv';
+import { spawn as globalSpawn } from 'child_process';
 
 import os from 'os';
 
@@ -25,28 +24,36 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 
-// In Electron packaged builds, write config to AppData/UserData; in standalone Node, use project root
-const CONFIG_DIR = process.env.APP_DATA_DIR || ROOT_DIR;
-const ENV_PATH = path.join(CONFIG_DIR, '.env');
-const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
-
-if (fs.existsSync(ENV_PATH)) {
-  dotenv.config({ path: ENV_PATH });
-} else if (fs.existsSync(ROOT_ENV_PATH)) {
-  dotenv.config({ path: ROOT_ENV_PATH });
-} else {
-  dotenv.config();
+export function createApplication({
+  config,
+  client,
+  persistence,
+  filesystem: fs = globalFilesystem,
+  clock = globalThis,
+  processRunner: spawn = globalSpawn,
+  engineFactory = (client, options) => new DownloadEngine(client, options),
+} = {}) {
+if (!config?.configDir || !config?.downloadDir || !client || persistence === undefined) {
+  throw new TypeError('Explicit configDir, downloadDir, client and persistence are required');
 }
-
-const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '127.0.0.1';
+const CONFIG_DIR = path.resolve(config.configDir);
+const ENV_PATH = path.join(CONFIG_DIR, '.env');
+const PORT = config.port ?? 3000;
+const HOST = config.host ?? '127.0.0.1';
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
-
-// Durable state (task queue + usage stats)
-const STATE_PATH = process.env.STATE_PATH || path.join(CONFIG_DIR, 'state.json');
-const persistence = new Persistence(STATE_PATH);
+wss.on('error', () => {});
+let startPromise;
+let closePromise;
+let closing = false;
+const timers = new Set();
+const engineListeners = [];
+const sockets = new Set();
+server.on('connection', (socket) => {
+  sockets.add(socket);
+  socket.once('close', () => sockets.delete(socket));
+});
 
 // Detect drives on Windows
 const AVAILABLE_DRIVES = (() => {
@@ -68,34 +75,25 @@ const upload = multer({
 });
 
 // App State
-let apiKey = process.env.ALLDEBRID_API_KEY || '';
-let defaultDownloadDir = process.env.DOWNLOAD_DIR;
-if (!defaultDownloadDir) {
-  if (process.versions.electron) {
-    defaultDownloadDir = path.join(os.homedir(), 'Downloads', 'AllDebrid');
-  } else {
-    defaultDownloadDir = path.resolve(ROOT_DIR, './downloads');
-  }
-}
-let downloadDir = path.resolve(defaultDownloadDir);
-let maxConcurrent = parseInt(process.env.MAX_CONCURRENT_DOWNLOADS, 10) || 3;
-let jackettUrl = process.env.JACKETT_URL || '';
-let jackettApiKey = process.env.JACKETT_API_KEY || '';
-let authToken = process.env.AUTH_TOKEN || '';
-let speedLimitKbps = parseInt(process.env.SPEED_LIMIT_KBPS, 10) || 0;
-let minFreeGb = parseFloat(process.env.MIN_FREE_GB);
-if (Number.isNaN(minFreeGb)) minFreeGb = 5;
-let scheduleEnabled = process.env.SCHEDULE_ENABLED === '1';
-let scheduleStart = process.env.SCHEDULE_START || '';
-let scheduleEnd = process.env.SCHEDULE_END || '';
-let scheduleLimitKbps = parseInt(process.env.SCHEDULE_LIMIT_KBPS, 10) || 0;
+let apiKey = config.apiKey ?? '';
+let downloadDir = path.resolve(config.downloadDir);
+let maxConcurrent = config.maxConcurrent ?? 3;
+let jackettUrl = config.jackettUrl ?? '';
+let jackettApiKey = config.jackettApiKey ?? '';
+let authToken = config.authToken ?? '';
+let speedLimitKbps = config.speedLimitKbps ?? 0;
+let minFreeGb = config.minFreeGb ?? 5;
+let scheduleEnabled = config.scheduleEnabled ?? false;
+let scheduleStart = config.scheduleStart ?? '';
+let scheduleEnd = config.scheduleEnd ?? '';
+let scheduleLimitKbps = config.scheduleLimitKbps ?? 0;
 
-const client = new AllDebridClient(apiKey);
-const engine = new DownloadEngine(client, {
+const engine = engineFactory(client, {
   downloadDir,
   maxConcurrent,
   persistence,
-  maxRetries: parseInt(process.env.MAX_RETRIES, 10) || 3,
+  maxRetries: config.maxRetries ?? 3,
+  autoStart: false,
 });
 engine.setSpeedLimit(speedLimitKbps * 1024);
 
@@ -196,8 +194,6 @@ function applyBandwidthPolicy() {
   }
 }
 
-applyBandwidthPolicy();
-setInterval(applyBandwidthPolicy, 60_000).unref?.();
 
 // ==========================================
 // Runtime disk-space guard
@@ -206,7 +202,7 @@ setInterval(applyBandwidthPolicy, 60_000).unref?.();
 const MIN_FREE_BYTES = () => minFreeGb * 1024 ** 3;
 let diskGuardTripped = false;
 
-setInterval(() => {
+function checkDiskSpace() {
   if (minFreeGb <= 0) return;
   const activeTasks = engine.getAllTasks().filter((t) => t.status === 'downloading');
   if (activeTasks.length === 0) {
@@ -231,18 +227,12 @@ setInterval(() => {
     }
   }
   diskGuardTripped = false;
-}, 60_000).unref?.();
-
-// Flush durable state cleanly on shutdown
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => {
-    try { engine.flushPersistenceSync(); } catch {}
-    process.exit(0);
-  });
 }
-process.on('exit', () => {
-  try { engine.flushPersistenceSync(); } catch {}
-});
+
+function onEngine(event, listener) {
+  engine.on(event, listener);
+  engineListeners.push([event, listener]);
+}
 
 // Broadcast updates to all connected WebSocket clients
 function broadcast(payload) {
@@ -255,7 +245,7 @@ function broadcast(payload) {
 }
 
 // Attach engine events to WebSockets
-engine.on('progress', () => {
+onEngine('progress', () => {
   broadcast({
     type: 'progress_tick',
     tasks: engine.getAllTasks(),
@@ -263,19 +253,19 @@ engine.on('progress', () => {
   });
 });
 
-engine.on('taskAdded', (task) => {
+onEngine('taskAdded', (task) => {
   broadcast({ type: 'task_added', task });
 });
 
-engine.on('taskUpdated', (task) => {
+onEngine('taskUpdated', (task) => {
   broadcast({ type: 'task_updated', task });
 });
 
-engine.on('taskCompleted', (task) => {
+onEngine('taskCompleted', (task) => {
   broadcast({ type: 'task_completed', task });
 });
 
-engine.on('taskDeleted', (taskId) => {
+onEngine('taskDeleted', (taskId) => {
   broadcast({ type: 'task_deleted', taskId });
 });
 
@@ -1181,40 +1171,164 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(ROOT_DIR, 'public', 'index.html'));
 });
 
-// Start Server function
-export function startServer(customPort = null) {
-  const portToUse = customPort || PORT;
-  return new Promise((resolve, reject) => {
-    server.listen(portToUse, HOST, () => {
-      console.log(`=================================================`);
-      console.log(`🚀 AllDebrid Downloader is running!`);
-      console.log(`🌐 Web Interface: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${portToUse}`);
-      console.log(`📁 Download Path : ${downloadDir}`);
-      console.log(`🔑 API Key Status: ${apiKey ? 'Configured ✅' : 'Missing (Set in UI) ⚠️'}`);
-      console.log(`🔒 Access Guard  : ${authToken ? 'Token Required 🔐' : 'Open (local only)'}`);
-      if (HOST === '0.0.0.0' && !authToken) {
-        console.warn('⚠️  WARNING: Server is exposed to the network without an AUTH_TOKEN!');
+let teardownPromise;
+function teardown() {
+  if (teardownPromise) return teardownPromise;
+  closing = true;
+  for (const timer of timers) clock.clearInterval(timer);
+  timers.clear();
+  teardownPromise = (async () => {
+    const stopped = Promise.resolve().then(() => engine.stop());
+    const websocketClosed = new Promise((resolve) => {
+      wss.close(() => resolve());
+      for (const ws of wss.clients) ws.terminate();
+    });
+    const httpClosed = new Promise((resolve, reject) => {
+      server.close((error) => {
+        if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error);
+        else resolve();
+      });
+      for (const socket of sockets) socket.destroy();
+    });
+    const results = await Promise.allSettled([stopped, websocketClosed, httpClosed]);
+    try { await persistence?.close?.(); } catch (reason) { results.push({ status: 'rejected', reason }); }
+    for (const [event, listener] of engineListeners) engine.off(event, listener);
+    engineListeners.length = 0;
+    wss.removeAllListeners();
+    server.removeAllListeners();
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure) throw failure.reason;
+  })();
+  return teardownPromise;
+}
+
+function start(customPort = PORT) {
+  if (closing) return Promise.reject(new Error('Application is closed'));
+  if (startPromise) return startPromise;
+  startPromise = (async () => {
+    try {
+      await new Promise((resolve, reject) => {
+        const onError = (error) => {
+          server.off('listening', onListening);
+          reject(error);
+        };
+        const onListening = () => {
+          server.off('error', onError);
+          resolve();
+        };
+        server.once('error', onError);
+        server.once('listening', onListening);
+        server.listen(customPort ?? PORT, HOST);
+      });
+      if (closing) throw new Error('Application closed during startup');
+      applyBandwidthPolicy();
+      await engine.start();
+      if (closing) throw new Error('Application closed during startup');
+      for (const callback of [applyBandwidthPolicy, checkDiskSpace]) {
+        const timer = clock.setInterval(callback, 60_000);
+        timers.add(timer);
+        timer.unref?.();
       }
-      console.log(`=================================================`);
-      resolve({ server, app, engine, wss, port: portToUse });
-    });
-    server.on('error', (err) => {
-      reject(err);
-    });
-  });
+      return application;
+    } catch (error) {
+      try { await teardown(); } catch (cleanupError) { error.cleanupError = cleanupError; }
+      throw error;
+    }
+  })();
+  return startPromise;
 }
 
-// Auto-start if run directly from node CLI (e.g. node server/server.js)
-const isDirectExecution = process.argv[1] && (
-  process.argv[1] === fileURLToPath(import.meta.url) ||
-  process.argv[1].endsWith('server.js')
-);
+function close() {
+  if (closePromise) return closePromise;
+  closing = true;
+  closePromise = (async () => {
+    if (startPromise) await startPromise.catch(() => {});
+    await teardown();
+  })();
+  return closePromise;
+}
 
+const application = {
+  app, server, engine, wss, client, persistence, start, close,
+  get port() { return server.address()?.port ?? null; },
+};
+return application;
+}
+
+export async function loadConfiguration({ environment = process.env, filesystem = globalFilesystem } = {}) {
+  const launch = { ...environment };
+  if (launch.APP_DATA_DIR !== undefined && !launch.APP_DATA_DIR) {
+    throw new TypeError('APP_DATA_DIR must not be empty');
+  }
+  const configDir = path.resolve(launch.APP_DATA_DIR ?? ROOT_DIR);
+  const envPath = path.join(configDir, '.env');
+  let persisted = {};
+  if (filesystem.existsSync(envPath)) {
+    const { parse } = await import('dotenv');
+    persisted = parse(filesystem.readFileSync(envPath, 'utf-8'));
+  }
+  const env = { ...persisted, ...launch };
+  const integer = (value, fallback) => value === undefined || value === '' ? fallback : parseInt(value, 10);
+  const decimal = (value, fallback) => value === undefined || value === '' ? fallback : parseFloat(value);
+  return {
+    configDir,
+    statePath: env.STATE_PATH || path.join(configDir, 'state.json'),
+    downloadDir: env.DOWNLOAD_DIR || (process.versions.electron
+      ? path.join(os.homedir(), 'Downloads', 'AllDebrid')
+      : path.join(ROOT_DIR, 'downloads')),
+    port: integer(env.PORT, 3000),
+    host: env.HOST || '127.0.0.1',
+    apiKey: env.ALLDEBRID_API_KEY || '',
+    maxConcurrent: integer(env.MAX_CONCURRENT_DOWNLOADS, 3),
+    maxRetries: integer(env.MAX_RETRIES, 3),
+    speedLimitKbps: integer(env.SPEED_LIMIT_KBPS, 0),
+    minFreeGb: decimal(env.MIN_FREE_GB, 5),
+    jackettUrl: env.JACKETT_URL || '',
+    jackettApiKey: env.JACKETT_API_KEY || '',
+    authToken: env.AUTH_TOKEN || '',
+    scheduleEnabled: env.SCHEDULE_ENABLED === '1',
+    scheduleStart: env.SCHEDULE_START || '',
+    scheduleEnd: env.SCHEDULE_END || '',
+    scheduleLimitKbps: integer(env.SCHEDULE_LIMIT_KBPS, 0),
+  };
+}
+
+export async function startServer(customPort = null, options = {}) {
+  const config = options.config ?? await loadConfiguration(options);
+  const client = options.client ?? new AllDebridClient(config.apiKey);
+  const persistence = options.persistence === undefined
+    ? new Persistence(config.statePath ?? path.join(config.configDir, 'state.json'))
+    : options.persistence;
+  let application;
+  try {
+    application = createApplication({ ...options, config, client, persistence });
+    return await application.start(customPort ?? config.port);
+  } catch (error) {
+    if (!application && options.persistence === undefined) {
+      try { await persistence?.close?.(); } catch (cleanupError) { error.cleanupError = cleanupError; }
+    }
+    throw error;
+  }
+}
+
+const isDirectExecution = process.argv[1] && path.resolve(process.argv[1]) === __filename;
 if (isDirectExecution && !process.versions.electron) {
-  startServer(PORT).catch((err) => {
-    console.error('Failed to start server:', err);
+  startServer().then((application) => {
+    console.log(`AllDebrid Downloader listening on port ${application.port}`);
+    const shutdown = async () => {
+      try { await application.close(); } catch (error) {
+        console.error('Failed to close server:', error.message);
+        process.exitCode = 1;
+      } finally {
+        process.off('SIGINT', shutdown);
+        process.off('SIGTERM', shutdown);
+      }
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+  }).catch((error) => {
+    console.error('Failed to start server:', error.message);
+    process.exitCode = 1;
   });
 }
-
-export { app, server, engine, wss, client, PORT };
 

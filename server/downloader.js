@@ -945,7 +945,10 @@ export class DownloadEngine extends EventEmitter {
     if (this.operations.has(file.id)) return this.operations.get(file.id);
     const operation = this.runFileStream(task, file);
     this.operations.set(file.id, operation);
-    operation.finally(() => this.operations.delete(file.id)).catch(() => {});
+    operation.finally(() => {
+      this.operations.delete(file.id);
+      this.processQueue();
+    }).catch(() => {});
     return operation;
   }
 
@@ -1042,7 +1045,7 @@ export class DownloadEngine extends EventEmitter {
         const retryRes = await fetch(downloadUrl, { signal: abortController.signal });
         if (!retryRes.ok) throw new Error(`HTTP ${retryRes.status}: ${retryRes.statusText}`);
         file.downloaded = 0;
-        return this.pipeResponseToDisk(task, file, retryRes, 0, abortController);
+        return await this.pipeResponseToDisk(task, file, retryRes, 0, abortController);
       }
 
       if (startOffset > 0) {
@@ -1054,7 +1057,7 @@ export class DownloadEngine extends EventEmitter {
           if (!freshRes.ok) throw new Error(`HTTP ${freshRes.status}: ${freshRes.statusText}`);
           startOffset = 0;
           file.downloaded = 0;
-          return this.pipeResponseToDisk(task, file, freshRes, 0, abortController);
+          return await this.pipeResponseToDisk(task, file, freshRes, 0, abortController);
         }
         const contentRange = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec(response.headers.get('content-range') || '');
         if (!contentRange || Number(contentRange[1]) !== startOffset) {

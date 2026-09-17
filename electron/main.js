@@ -7,7 +7,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, Notification, n
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { startServer, engine } from '../server/server.js';
+import { startServer } from '../server/server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,8 +16,13 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 let mainWindow = null;
 let tray = null;
 let serverInstance = null;
-let serverPort = process.env.PORT || 3000;
+let engine = null;
+let serverPort = null;
 let isQuitting = false;
+let startupPromise = null;
+let shutdownPromise = null;
+let shutdownComplete = false;
+const engineListeners = [];
 
 // Single Instance Lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -86,7 +91,11 @@ function createWindow() {
     },
   });
 
-  const appUrl = `http://localhost:${serverPort}`;
+  const address = serverInstance.server.address().address;
+  const host = address === '0.0.0.0' ? '127.0.0.1'
+    : address === '::' ? '[::1]'
+      : address.includes(':') ? `[${address}]` : address;
+  const appUrl = `http://${host}:${serverPort}`;
   mainWindow.loadURL(appUrl);
 
   mainWindow.once('ready-to-show', () => {
@@ -300,12 +309,17 @@ function setupIpcHandlers() {
 /**
  * Setup Engine Events for Tray and OS Notifications
  */
+function onEngine(event, listener) {
+  engine.on(event, listener);
+  engineListeners.push([event, listener]);
+}
+
 function setupEngineListeners() {
   if (!engine) return;
 
   // Update tray tooltip on progress tick (throttled)
   let lastTrayUpdate = 0;
-  engine.on('progress', () => {
+  onEngine('progress', () => {
     const now = Date.now();
     if (now - lastTrayUpdate > 1000) {
       lastTrayUpdate = now;
@@ -313,7 +327,7 @@ function setupEngineListeners() {
     }
   });
 
-  engine.on('taskCompleted', (task) => {
+  onEngine('taskCompleted', (task) => {
     updateTrayMenu();
     if (Notification.isSupported()) {
       const notif = new Notification({
@@ -331,7 +345,7 @@ function setupEngineListeners() {
     }
   });
 
-  engine.on('taskError', (task) => {
+  onEngine('taskError', (task) => {
     updateTrayMenu();
     if (Notification.isSupported()) {
       const notif = new Notification({
@@ -343,7 +357,7 @@ function setupEngineListeners() {
     }
   });
 
-  engine.on('diskWarning', (info) => {
+  onEngine('diskWarning', (info) => {
     if (Notification.isSupported()) {
       const notif = new Notification({
         title: '⚠️ Low Disk Space',
@@ -360,43 +374,67 @@ function setupEngineListeners() {
     }
   });
 
-  engine.on('taskAdded', () => updateTrayMenu());
-  engine.on('taskDeleted', () => updateTrayMenu());
+  onEngine('taskAdded', () => updateTrayMenu());
+  onEngine('taskDeleted', () => updateTrayMenu());
 }
 
 /**
  * App Lifecycle
  */
-app.whenReady().then(async () => {
-  process.env.APP_DATA_DIR = app.getPath('userData');
-  setupIpcHandlers();
-
-  try {
-    // Start Express + WebSocket backend server
-    const serverResult = await startServer(serverPort);
-    serverInstance = serverResult.server;
-    serverPort = serverResult.port;
-    console.log(`[Electron] Backend connected on port ${serverPort}`);
-  } catch (err) {
-    console.error('[Electron] Failed to start backend server:', err);
-  }
-
-  setupEngineListeners();
-  createTray();
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+if (gotTheLock) {
+  startupPromise = app.whenReady().then(async () => {
+    if (isQuitting) return;
+    const userData = app.getPath('userData');
+    try {
+      serverInstance = await startServer(null, {
+        environment: { ...process.env, APP_DATA_DIR: userData },
+      });
+      serverPort = serverInstance.port;
+      engine = serverInstance.engine;
+      if (isQuitting) return;
+      setupIpcHandlers();
+      setupEngineListeners();
+      createTray();
       createWindow();
-    } else if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
+      app.on('activate', () => {
+        if (isQuitting || !serverInstance) return;
+        if (BrowserWindow.getAllWindows().length === 0) {
+          createWindow();
+        } else if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+    } catch (error) {
+      console.error('[Electron] Failed to start backend server:', error.message);
+      dialog.showErrorBox('AllDebrid startup failed', error.code === 'EADDRINUSE'
+        ? 'The configured port is already in use. Close the other application or choose another port.'
+        : 'The backend could not start. Check the application configuration and try again.');
+      setImmediate(() => app.quit());
     }
   });
-});
+}
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isQuitting = true;
+  if (shutdownComplete || !gotTheLock) return;
+  event.preventDefault();
+  if (shutdownPromise) return;
+  shutdownPromise = (async () => {
+    try {
+      await startupPromise;
+      for (const [name, listener] of engineListeners) engine.off(name, listener);
+      engineListeners.length = 0;
+      await serverInstance?.close();
+    } catch (error) {
+      console.error('[Electron] Backend shutdown failed:', error.message);
+    } finally {
+      tray?.destroy();
+      tray = null;
+      shutdownComplete = true;
+      app.quit();
+    }
+  })();
 });
 
 app.on('window-all-closed', () => {
