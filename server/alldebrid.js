@@ -4,6 +4,8 @@
  * Docs: https://docs.alldebrid.com/
  */
 
+import path from 'node:path';
+
 const API_BASE = 'https://api.alldebrid.com';
 const AGENT = 'alldebrid-downloader';
 
@@ -93,14 +95,22 @@ export class AllDebridClient {
    */
   async checkInstantAvailability(magnets) {
     const list = Array.isArray(magnets) ? magnets : [magnets];
-    if (list.length === 0) return [];
-    try {
-      const res = await this.uploadMagnet(list);
-      return res?.magnets || [];
-    } catch (err) {
-      console.error('AllDebrid instant check error:', err.message);
-      return [];
-    }
+    return list.map((magnet) => {
+      const hash = typeof magnet === 'string'
+        ? magnet.match(/^[a-fA-F0-9]{40}$/)?.[0] || magnet.match(/urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})/i)?.[1]
+        : null;
+      return {
+        magnet,
+        hash: hash ? hash.toLowerCase() : null,
+        name: null,
+        size: null,
+        ready: null,
+        availability: 'unknown',
+        checkedAt: null,
+        provider: 'alldebrid',
+        reason: 'read_only_availability_unavailable',
+      };
+    });
   }
 
   /**

@@ -293,13 +293,12 @@ export async function searchAggregator(query, options = {}) {
   const {
     category = 'all',
     onlyCached = false,
-    alldebridClient = null,
     jackettUrl = process.env.JACKETT_URL || '',
     jackettApiKey = process.env.JACKETT_API_KEY || '',
   } = options;
 
   if (!query || !query.trim()) {
-    return { results: [], total: 0, query: '', instantCount: 0 };
+    return { results: [], total: 0, query: '', instantCount: 0, unknownCount: 0 };
   }
 
   const cleanQuery = query.trim();
@@ -353,50 +352,16 @@ export async function searchAggregator(query, options = {}) {
   // Sort by seeders descending
   deduplicated.sort((a, b) => (b.seeders || 0) - (a.seeders || 0));
 
-  // Enrich with AllDebrid Instant Cloud Cache telemetry
-  let instantCount = 0;
-  if (alldebridClient && deduplicated.length > 0) {
-    // Collect top 60 hashes to check with AllDebrid
-    const targetItems = deduplicated.slice(0, 60);
-    const hashesToCheck = targetItems.map((r) => r.infoHash).filter(Boolean);
-
-    if (hashesToCheck.length > 0) {
-      try {
-        const instantMap = new Map();
-        // Check in chunks of 25 to respect API guidelines
-        for (let i = 0; i < hashesToCheck.length; i += 25) {
-          const chunk = hashesToCheck.slice(i, i + 25);
-          const cacheResults = await alldebridClient.checkInstantAvailability(chunk);
-          if (Array.isArray(cacheResults)) {
-            for (const item of cacheResults) {
-              if (item?.hash) {
-                instantMap.set(item.hash.toLowerCase(), {
-                  ready: !!item.ready,
-                  name: item.name || null,
-                  size: item.size || null,
-                  alldebridId: item.id || null,
-                });
-              }
-            }
-          }
-        }
-
-        for (const item of deduplicated) {
-          if (item.infoHash && instantMap.has(item.infoHash.toLowerCase())) {
-            const cacheInfo = instantMap.get(item.infoHash.toLowerCase());
-            item.instant = cacheInfo.ready;
-            item.alldebridReady = cacheInfo.ready;
-            item.alldebridId = cacheInfo.alldebridId;
-            if (cacheInfo.ready) instantCount++;
-          } else {
-            item.instant = false;
-            item.alldebridReady = false;
-          }
-        }
-      } catch (err) {
-        console.warn('[Search] Failed to check AllDebrid instant cache:', err.message);
-      }
-    }
+  const instantCount = 0;
+  const unknownCount = deduplicated.length;
+  for (const item of deduplicated) {
+    item.instant = null;
+    item.alldebridReady = null;
+    item.alldebridId = null;
+    item.availability = 'unknown';
+    item.checkedAt = null;
+    item.provider = 'alldebrid';
+    item.reason = 'read_only_availability_unavailable';
   }
 
   // Filter if user requested only instant-cached releases
@@ -417,5 +382,6 @@ export async function searchAggregator(query, options = {}) {
     total: finalResults.length,
     query: cleanQuery,
     instantCount,
+    unknownCount,
   };
 }
