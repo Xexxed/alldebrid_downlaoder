@@ -456,6 +456,50 @@ async function resolveMagnetPreview(magnetId, defaultName = '', defaultSize = 0,
 /**
  * Preview Download Structure before queueing
  */
+/**
+ * In-memory DownloadPlan registry (Stage C): preview resolves a validated plan
+ * with an expiring ID; dispatch reloads and revalidates the same plan instead
+ * of trusting client-supplied paths/metadata.
+ */
+const PLAN_TTL_MS = 10 * 60 * 1000;
+const downloadPlans = new Map();
+
+function createPlanSnapshot(preview, options = {}) {
+  const planId = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const now = Date.now();
+  const plan = {
+    id: planId,
+    createdAt: now,
+    expiresAt: now + PLAN_TTL_MS,
+    type: preview.type,
+    name: preview.name,
+    url: preview.url ?? null,
+    magnetId: preview.magnetId ?? null,
+    filesTree: preview.filesTree ?? null,
+    flattenedFiles: preview.flattenedFiles ?? null,
+    totalSize: preview.totalSize ?? 0,
+    hasArchives: preview.hasArchives ?? false,
+    defaultOutputDir: preview.defaultOutputDir,
+    customOutputDir: options.customOutputDir ?? null,
+    selectedFiles: options.selectedFiles ?? null,
+    autoExtract: !!options.autoExtract,
+    deleteArchiveAfterExtract: !!options.deleteArchiveAfterExtract,
+  };
+  downloadPlans.set(planId, plan);
+  return plan;
+}
+
+function loadPlanForDispatch(planId) {
+  const plan = typeof planId === 'string' ? downloadPlans.get(planId) : undefined;
+  if (!plan) throw Object.assign(new Error('Download plan not found or expired; request a new preview'), { status: 410 });
+  if (Date.now() > plan.expiresAt) {
+    downloadPlans.delete(planId);
+    throw Object.assign(new Error('Download plan expired; request a new preview'), { status: 410 });
+  }
+  downloadPlans.delete(planId); // single-use dispatch
+  return plan;
+}
+
 app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) => {
   if (!apiKey) {
     return res.status(400).json({ error: 'AllDebrid API Key is not set. Please update it in Settings.' });
@@ -553,7 +597,7 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
     }
   }
 
-  // Annotate all preview files with on-disk state
+  // Annotate all preview files with on-disk state and attach durable plans
   for (const p of previews) {
     const targetDir = p.defaultOutputDir;
     if (p.flattenedFiles && p.flattenedFiles.length > 0) {
@@ -568,7 +612,7 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
             const stat = fs.statSync(fullPath);
             f.existsOnDisk = true;
             f.diskBytes = stat.size;
-            if (f.size > 0 && stat.size >= f.size) {
+            if (f.size > 0 && stat.size === f.size) {
               f.isCompleteOnDisk = true;
             }
           }
@@ -591,7 +635,10 @@ app.post('/api/downloads/preview', upload.array('torrents'), async (req, res) =>
     }
   }
 
-  res.json({ previews, errors });
+  res.json({
+    previews: previews.map((p) => ({ ...p, planId: createPlanSnapshot(p).id })),
+    errors,
+  });
 });
 
 /**
@@ -609,38 +656,57 @@ app.post('/api/downloads/add', async (req, res) => {
   if (Array.isArray(req.body.items) && req.body.items.length > 0) {
     for (const item of req.body.items) {
       try {
+        let plan = null;
+        if (item.planId) {
+          plan = loadPlanForDispatch(item.planId);
+        } else {
+          // Legacy client without plan support: accept but re-derive from item
+          plan = {
+            type: item.type,
+            name: item.name,
+            url: item.url ?? null,
+            magnetId: item.magnetId ?? null,
+            filesTree: item.filesTree ?? null,
+            customOutputDir: item.customOutputDir ?? null,
+            selectedFiles: item.selectedFiles ?? null,
+            autoExtract: !!item.autoExtract,
+            deleteArchiveAfterExtract: !!item.deleteArchiveAfterExtract,
+          };
+        }
         const options = {
-          autoExtract: !!item.autoExtract,
-          deleteArchiveAfterExtract: !!item.deleteArchiveAfterExtract,
+          autoExtract: plan.autoExtract,
+          deleteArchiveAfterExtract: plan.deleteArchiveAfterExtract,
         };
 
-        if (item.type === 'folder' && Array.isArray(item.files)) {
+        if (plan.type === 'folder' && Array.isArray(plan.flattenedFiles || item.files)) {
           const task = await engine.addFolderTask(
-            item.name,
-            item.files,
-            item.customOutputDir,
-            item.selectedFiles,
+            plan.name ?? item.name,
+            plan.flattenedFiles || item.files,
+            plan.customOutputDir ?? item.customOutputDir,
+            plan.selectedFiles ?? item.selectedFiles,
             options
           );
           addedTasks.push(task);
-        } else if (item.type === 'torrent' && item.magnetId) {
+        } else if (plan.type === 'torrent' && (plan.magnetId ?? item.magnetId)) {
           const task = await engine.addMagnetTask(
-            item.magnetId,
-            item.name,
-            item.filesTree,
-            item.customOutputDir,
-            item.selectedFiles,
+            plan.magnetId ?? item.magnetId,
+            plan.name ?? item.name,
+            plan.filesTree ?? item.filesTree,
+            plan.customOutputDir ?? item.customOutputDir,
+            plan.selectedFiles ?? item.selectedFiles,
             options
           );
           addedTasks.push(task);
-        } else if (item.type === 'directLink' && item.url) {
+        } else if (plan.type === 'directLink' && (plan.url ?? item.url)) {
           const task = await engine.addDirectLinkTask(
-            item.url,
-            item.name,
-            item.customOutputDir,
+            plan.url ?? item.url,
+            plan.name ?? item.name,
+            plan.customOutputDir ?? item.customOutputDir,
             options
           );
           addedTasks.push(task);
+        } else {
+          throw Object.assign(new Error('Unsupported plan type for dispatch'), { status: 400 });
         }
       } catch (err) {
         errors.push(`Error adding ${item.name || item.magnetId}: ${err.message}`);
@@ -648,7 +714,7 @@ app.post('/api/downloads/add', async (req, res) => {
     }
 
     return res.json({
-      success: true,
+      success: addedTasks.length > 0,
       addedCount: addedTasks.length,
       tasks: addedTasks.map((t) => t.id),
       errors,
