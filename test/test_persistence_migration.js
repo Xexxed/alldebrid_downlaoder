@@ -12,6 +12,7 @@ import path from 'path';
 import assert from 'node:assert/strict';
 import { test, afterEach } from 'node:test';
 
+
 const { Persistence } = await import('../server/persistence.js');
 const { DownloadEngine } = await import('../server/downloader.js');
 
@@ -21,6 +22,12 @@ class IsolatedEngine extends DownloadEngine {
 }
 
 const cleanupPaths = [];
+const stores = [];
+function createPersistence(...args) {
+  const store = new Persistence(...args);
+  stores.push(store);
+  return store;
+}
 function makeTempDir(prefix) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   cleanupPaths.push(dir);
@@ -28,6 +35,7 @@ function makeTempDir(prefix) {
 }
 
 afterEach(() => {
+  while (stores.length) stores.pop().close();
   while (cleanupPaths.length) {
     const dir = cleanupPaths.pop();
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
@@ -75,7 +83,7 @@ test('v1 state migrates to v2 with backup and unknown ownership', () => {
   const statePath = path.join(tmp, 'state.json');
   writeState(statePath, v1State());
 
-  const persistence = new Persistence(statePath, { flushDelayMs: 10 });
+  const persistence = createPersistence(statePath, { flushDelayMs: 10 });
   assert.equal(persistence.loadError, null);
   assert.equal(persistence.data.version, 2);
   assert.equal(persistence.data.tasks.length, 2);
@@ -99,7 +107,7 @@ test('paused intent survives v1 -> v2 migration and restart round-trip', () => {
   const statePath = path.join(tmp, 'state.json');
   writeState(statePath, v1State());
 
-  const persistence = new Persistence(statePath, { flushDelayMs: 10 });
+  const persistence = createPersistence(statePath, { flushDelayMs: 10 });
   persistence.flushSync();
 
   const engine = new IsolatedEngine({}, { downloadDir: path.join(tmp, 'dl'), persistence, autoStart: false });
@@ -116,7 +124,7 @@ test('corrupt JSON is preserved and reported, not overwritten', () => {
   const corrupt = '{ not valid json !!!';
   writeState(statePath, corrupt);
 
-  const persistence = new Persistence(statePath, { flushDelayMs: 10 });
+  const persistence = createPersistence(statePath, { flushDelayMs: 10 });
   assert.match(persistence.loadError || '', /not valid JSON/);
   assert.equal(persistence.data.tasks.length, 0, 'session starts empty');
   assert.equal(fs.readFileSync(statePath, 'utf-8'), corrupt, 'original evidence untouched before any flush');
@@ -127,9 +135,57 @@ test('future schema version is preserved and reported, never downgraded', () => 
   const statePath = path.join(tmp, 'state.json');
   writeState(statePath, JSON.stringify({ version: 99, tasks: [{ id: 'x' }] }));
 
-  const persistence = new Persistence(statePath, { flushDelayMs: 10 });
+  const persistence = createPersistence(statePath, { flushDelayMs: 10 });
   assert.match(persistence.loadError || '', /unsupported schema version 99/);
   assert.equal(persistence.data.tasks.length, 0);
-  persistence.flushSync();
+  assert.throws(() => persistence.flushSync(), /quarantined/);
   assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf-8')).version, 99, 'future-version file untouched');
+});
+
+test('state lock rejects a second writer before reading or migrating and releases on close', () => {
+  const tmp = makeTempDir('adc-lock-');
+  const statePath = path.join(tmp, 'state.json');
+  writeState(statePath, v1State());
+  const first = createPersistence(statePath);
+  const entries = fs.readdirSync(tmp);
+  assert.throws(() => new Persistence(statePath), { code: 'STATE_LOCKED' });
+  assert.deepEqual(fs.readdirSync(tmp), entries);
+  assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).version, 1);
+  first.close();
+  first.close();
+  const second = createPersistence(statePath);
+  assert.equal(second.data.version, 2);
+  assert.throws(() => first.writeNow(), { code: 'STATE_CLOSED' });
+});
+
+test('failed flush retains dirty state and old snapshot until retry succeeds', async (t) => {
+  const tmp = makeTempDir('adc-flush-');
+  const statePath = path.join(tmp, 'state.json');
+  const store = createPersistence(statePath);
+  store.flushSync();
+  const original = fs.readFileSync(statePath, 'utf8');
+  store.data.stats.totalBytes = 123;
+  store.scheduleFlush();
+  t.mock.method(fs, 'renameSync', () => { throw new Error('Injected publication failure'); });
+  await assert.rejects(store.flush(), /Injected publication failure/);
+  assert.equal(store._dirty, true);
+  assert.equal(fs.readFileSync(statePath, 'utf8'), original);
+  assert.equal(fs.readdirSync(tmp).some(name => name.endsWith('.tmp')), false);
+  t.mock.restoreAll();
+  await store.flush();
+  assert.equal(store._dirty, false);
+  assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).stats.totalBytes, 123);
+});
+
+test('failed close reports write failure, cancels timers and releases the lock', (t) => {
+  const tmp = makeTempDir('adc-close-');
+  const statePath = path.join(tmp, 'state.json');
+  const store = createPersistence(statePath);
+  store.scheduleFlush();
+  t.mock.method(fs, 'renameSync', () => { throw new Error('Injected close failure'); });
+  assert.throws(() => store.close(), /Injected close failure/);
+  assert.equal(store._flushTimer, null);
+  t.mock.restoreAll();
+  const next = createPersistence(statePath);
+  assert.equal(next.data.tasks.length, 0);
 });

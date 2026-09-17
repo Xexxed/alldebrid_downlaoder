@@ -9,6 +9,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'node:crypto';
 
 const DEFAULT_STATS = {
   totalBytes: 0,
@@ -64,7 +65,13 @@ function migrateV1toV2(v1) {
 
 export class Persistence {
   constructor(filePath, options = {}) {
-    this.filePath = filePath;
+    const absolutePath = path.resolve(filePath);
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    this.filePath = path.join(fs.realpathSync(path.dirname(absolutePath)), path.basename(absolutePath));
+    this.lockPath = `${this.filePath}.lock`;
+    this._closed = false;
+    this._lockToken = randomUUID();
+    this._lockFd = null;
     this.flushDelayMs = options.flushDelayMs ?? 2000;
     this.backupOnUpgrade = options.backupOnUpgrade !== false;
     this._flushTimer = null;
@@ -72,11 +79,32 @@ export class Persistence {
     this.loadError = null;
     this.migrationReport = null;
     this.data = emptyState();
-    this.load();
-    this._quarantined = !!this.loadError && fs.existsSync(this.filePath);
+    try {
+      this._lockFd = fs.openSync(this.lockPath, 'wx', 0o600);
+    } catch (error) {
+      if (error.code === 'EEXIST') {
+        throw Object.assign(new Error('State store is locked. Close the other instance; after an unclean exit, verify no writer is running before removing the state lock.'), { code: 'STATE_LOCKED' });
+      }
+      throw error;
+    }
+    try {
+      fs.writeFileSync(this._lockFd, JSON.stringify({ pid: process.pid, token: this._lockToken }));
+      this.load();
+      this._quarantined = !!this.loadError && fs.existsSync(this.filePath);
+    } catch (error) {
+      fs.closeSync(this._lockFd);
+      this._lockFd = null;
+      fs.unlinkSync(this.lockPath);
+      throw error;
+    }
+  }
+
+  assertOpen() {
+    if (this._closed) throw Object.assign(new Error('State store is closed'), { code: 'STATE_CLOSED' });
   }
 
   load() {
+    this.assertOpen();
     if (!fs.existsSync(this.filePath)) {
       this.data = emptyState();
       return this.data;
@@ -143,6 +171,7 @@ export class Persistence {
   }
 
   scheduleFlush() {
+    this.assertOpen();
     this._dirty = true;
     if (this._flushTimer) return;
     this._flushTimer = setTimeout(() => {
@@ -153,29 +182,39 @@ export class Persistence {
   }
 
   async flush() {
+    this.assertOpen();
     if (!this._dirty && !this._flushTimer) return;
-    this._dirty = false;
-    if (this._flushTimer) {
-      clearTimeout(this._flushTimer);
-      this._flushTimer = null;
-    }
-    await this.writeNow();
+    this.flushSync();
   }
 
   flushSync() {
+    this.assertOpen();
     if (this._flushTimer) {
       clearTimeout(this._flushTimer);
       this._flushTimer = null;
     }
+    this._dirty = true;
+    this.writeNow();
     this._dirty = false;
+  }
+
+  close() {
+    if (this._closed) return;
     try {
-      this.writeNow();
-    } catch (err) {
-      console.error('[Persistence] Sync flush failed:', err.message);
+      if (this._dirty && !this._quarantined) this.flushSync();
+    } finally {
+      if (this._flushTimer) clearTimeout(this._flushTimer);
+      this._flushTimer = null;
+      this._closed = true;
+      if (this._lockFd !== null) fs.closeSync(this._lockFd);
+      this._lockFd = null;
+      const lock = JSON.parse(fs.readFileSync(this.lockPath, 'utf8'));
+      if (lock.token === this._lockToken) fs.unlinkSync(this.lockPath);
     }
   }
 
   writeNow() {
+    this.assertOpen();
     if (this._quarantined) {
       // Original state file is unreadable or unsupported: never overwrite the
       // evidence with this empty session. New writes require an explicit
@@ -184,8 +223,21 @@ export class Persistence {
     }
     const dir = path.dirname(this.filePath);
     fs.mkdirSync(dir, { recursive: true });
-    const tmpPath = `${this.filePath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(this.data), 'utf-8');
-    fs.renameSync(tmpPath, this.filePath);
+    const tmpPath = `${this.filePath}.${randomUUID()}.tmp`;
+    let fd;
+    let created = false;
+    try {
+      fd = fs.openSync(tmpPath, 'wx', 0o600);
+      created = true;
+      fs.writeFileSync(fd, JSON.stringify(this.data), 'utf-8');
+      fs.fsyncSync(fd);
+      fs.closeSync(fd);
+      fd = undefined;
+      fs.renameSync(tmpPath, this.filePath);
+      created = false;
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
+      if (created) fs.unlinkSync(tmpPath);
+    }
   }
 }
