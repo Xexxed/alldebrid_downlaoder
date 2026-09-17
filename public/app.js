@@ -61,8 +61,8 @@ function withToken(url) {
 
 async function apiFetch(url, options = {}) {
   const token = getStoredToken();
-  const headers = { ...(options.headers || {}) };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = new Headers(options.headers);
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
 
   const res = await fetch(withToken(url), { ...options, headers });
 
