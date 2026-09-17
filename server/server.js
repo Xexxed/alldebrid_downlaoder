@@ -183,7 +183,9 @@ function isWithinScheduleWindow(now = new Date()) {
 
 function applyBandwidthPolicy() {
   let targetKbps = speedLimitKbps;
-  if (scheduleEnabled && isWithinScheduleWindow() && scheduleLimitKbps > 0) {
+  // Schedule window is the override condition: zero inside the window means
+  // unlimited for its duration; outside the window the manual limit applies.
+  if (scheduleEnabled && isWithinScheduleWindow()) {
     targetKbps = scheduleLimitKbps;
   }
   const targetBytes = targetKbps * 1024;

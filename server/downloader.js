@@ -22,6 +22,7 @@ class SpeedLimiter {
     this.tokens = 0;
     this.waiters = [];
     this._timer = null;
+    this.destroyed = false;
   }
 
   start() {
@@ -57,19 +58,43 @@ class SpeedLimiter {
   }
 
   consume(bytes) {
+    if (this.destroyed) return Promise.reject(new Error('Speed limiter destroyed'));
     if (this.limit <= 0) return Promise.resolve();
-    if (bytes > this.limit) bytes = this.limit;
+    // Split oversized requests into satisfiable token chunks so every byte is
+    // charged: a large network chunk cannot bypass the configured rate.
     return new Promise((resolve) => {
-      if (this.waiters.length === 0 && this.tokens >= bytes) {
-        this.tokens -= bytes;
-        resolve();
-      } else {
-        this.waiters.push({ bytes, resolve });
-      }
+      let remaining = bytes;
+      const enqueue = (want, onGranted) => {
+        this.waiters.push({ bytes: want, resolve: onGranted });
+      };
+      const tryConsume = () => {
+        while (remaining > 0) {
+          if (this.limit <= 0) {
+            remaining = 0;
+            resolve();
+            return;
+          }
+          const want = Math.min(remaining, this.limit);
+          if (this.waiters.length === 0 && this.tokens >= want) {
+            this.tokens -= want;
+            remaining -= want;
+            if (remaining === 0) resolve();
+          } else {
+            enqueue(want, () => {
+              remaining -= want;
+              if (remaining <= 0) resolve();
+              else tryConsume();
+            });
+            return;
+          }
+        }
+      };
+      tryConsume();
     });
   }
 
   destroy() {
+    this.destroyed = true;
     clearInterval(this._timer);
     this._timer = null;
     this.waiters.splice(0).forEach((w) => w.resolve());
