@@ -23,7 +23,9 @@ temp/
 logs/
 *.log
 state.json
-state.json.tmp
+state.json.*.tmp
+state.json.*.bak
+state.json.lock
 
 # OS Generated Files
 .DS_Store
