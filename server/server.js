@@ -808,12 +808,11 @@ app.post('/api/downloads/:id/retry', (req, res) => {
 });
 
 /**
- * Cancel and remove download task
+ * Cancel and remove download task (metadata-only; files are preserved)
  */
 app.post('/api/downloads/:id/cancel', (req, res) => {
-  const deleteFiles = req.body.deleteFiles === true;
-  const ok = engine.cancelTask(req.params.id, deleteFiles);
-  res.json({ success: ok });
+  const ok = engine.cancelTask(req.params.id);
+  res.json({ success: ok, filesPreserved: true });
 });
 
 /**

@@ -1265,9 +1265,9 @@ export class DownloadEngine extends EventEmitter {
   }
 
   /**
-   * Cancel and delete task (with optional file removal)
+   * Cancel and remove task (metadata-only; files are never deleted)
    */
-  cancelTask(taskId, deleteFiles = false) {
+  cancelTask(taskId) {
     const task = this.tasks.get(taskId);
     if (!task) return false;
 
@@ -1278,14 +1278,6 @@ export class DownloadEngine extends EventEmitter {
         try { stream.abortController.abort(); } catch {}
         try { stream.writeStream?.destroy(); } catch {}
         this.activeFileStreams.delete(file.id);
-      }
-    }
-
-    if (deleteFiles && fs.existsSync(task.outputDir)) {
-      try {
-        fs.rmSync(task.outputDir, { recursive: true, force: true });
-      } catch (err) {
-        console.error(`Error deleting folder ${task.outputDir}:`, err);
       }
     }
 

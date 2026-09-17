@@ -201,16 +201,16 @@ async function extractArchive(entryFilePath, targetDir, options = {}) {
     const targetNorm = path.resolve(targetDir);
 
     if (extractor.type === '7z') {
-      // 7-Zip: x = extract with full paths, -y = assume yes, -o<dir> = output directory, -aoa = overwrite all
-      args = ['x', '-y', '-aoa', `-o${targetNorm}`, entryNorm];
+      // 7-Zip: x = extract with full paths, -y = assume yes, -o<dir> = output directory, -aos = skip existing (no overwrite)
+      args = ['x', '-y', '-aos', `-o${targetNorm}`, entryNorm];
     } else if (extractor.type === 'unrar') {
-      // UnRAR: x = extract with full paths, -y = assume yes, -o+ = overwrite all
-      args = ['x', '-y', '-o+', entryNorm, `${targetNorm}\\`];
+      // UnRAR: x = extract with full paths, -y = assume yes, -o- = never overwrite
+      args = ['x', '-y', '-o-', entryNorm, `${targetNorm}\\`];
     } else if (extractor.type === 'winrar') {
-      // WinRAR GUI in silent mode: x -ibck (in background), -y, -o+
-      args = ['x', '-ibck', '-y', '-o+', entryNorm, `${targetNorm}\\`];
+      // WinRAR GUI in silent mode: x -ibck (in background), -y, -o- = never overwrite
+      args = ['x', '-ibck', '-y', '-o-', entryNorm, `${targetNorm}\\`];
     } else if (extractor.type === 'tar') {
-      // tar.exe
+      // tar.exe (no reliable no-overwrite flag; behavior documented as overwrite-prone)
       args = ['-xf', entryNorm, '-C', targetNorm];
     }
 
@@ -252,32 +252,13 @@ export async function extractTaskArchives(task, deleteParts = false) {
     throw new Error(`Target directory does not exist: ${targetDir}`);
   }
 
-  // Find files from task or scan targetDir if files list is empty
-  let fileList = [];
-  if (task.files && task.files.length > 0) {
-    fileList = task.files.map((f) => ({
-      name: f.name,
-      fullPath: f.fullLocalPath || (f.relativePath ? path.join(targetDir, f.relativePath) : path.join(targetDir, f.name)),
-      fullLocalPath: f.fullLocalPath || (f.relativePath ? path.join(targetDir, f.relativePath) : path.join(targetDir, f.name)),
-    }));
-  }
-
-  // Also scan targetDir directly to ensure we find all archives physically present on disk
-  try {
-    const dirEntries = fs.readdirSync(targetDir, { withFileTypes: true });
-    for (const e of dirEntries) {
-      if (e.isFile() && isArchiveFile(e.name)) {
-        const diskFullPath = path.join(targetDir, e.name);
-        if (!fileList.some((f) => f.fullPath === diskFullPath)) {
-          fileList.push({
-            name: e.name,
-            fullPath: diskFullPath,
-            fullLocalPath: diskFullPath,
-          });
-        }
-      }
-    }
-  } catch {}
+  // Only archives explicitly listed as task files are processed; never scan
+  // the directory for unrelated files that merely share the folder.
+  const fileList = (task.files || []).map((f) => ({
+    name: f.name,
+    fullPath: f.fullLocalPath || (f.relativePath ? path.join(targetDir, f.relativePath) : path.join(targetDir, f.name)),
+    fullLocalPath: f.fullLocalPath || (f.relativePath ? path.join(targetDir, f.relativePath) : path.join(targetDir, f.name)),
+  }));
 
   const groups = detectArchiveGroups(fileList, targetDir);
   if (groups.length === 0) {
@@ -298,20 +279,8 @@ export async function extractTaskArchives(task, deleteParts = false) {
     await extractArchive(group.entryFile, targetDir);
     extractedCount++;
 
-    // If part cleanup is requested, delete all parts for this group
-    if (deleteParts && group.partFiles && group.partFiles.length > 0) {
-      for (const partPath of group.partFiles) {
-        try {
-          if (fs.existsSync(partPath)) {
-            fs.unlinkSync(partPath);
-            deletedFiles.push(partPath);
-            console.log(`[Extractor] Cleaned up part file: ${partPath}`);
-          }
-        } catch (err) {
-          console.error(`Failed to delete archive part ${partPath}:`, err);
-        }
-      }
-    }
+    // Part cleanup is disabled in the safe baseline: deletion requires the
+    // later explicit ownership/confirmation service (plan stage 1 / stage 11).
   }
 
   if (extractedCount === 0) {
