@@ -9,6 +9,7 @@ import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import { flattenFileTree, sanitizePathSegment, normalizeMagnetResponse } from './alldebrid.js';
 import { extractTaskArchives, isArchiveFile } from './extractor.js';
+import { planFileInDestination, assertContained, DestinationError } from './planning/destination-planner.js';
 
 /**
  * Shared token-bucket bandwidth limiter.
@@ -449,10 +450,20 @@ export class DownloadEngine extends EventEmitter {
     }
 
     let totalBytes = 0;
-    const fileObjects = filteredFiles.map((item, idx) => {
+    const fileObjects = [];
+    for (const [idx, item] of filteredFiles.entries()) {
       const relPath = item.relativePath || item.name;
-      const relativeNorm = relPath.split('/').join(path.sep);
-      const fullLocalPath = path.join(targetFolder, relativeNorm);
+      let planned;
+      try {
+        planned = planFileInDestination(targetFolder, relPath);
+        assertContained(baseDir, planned.fullPath);
+      } catch (err) {
+        if (err instanceof DestinationError) {
+          this.markTaskError(task, `Rejected file path "${relPath}": ${err.message}`);
+          return task;
+        }
+        throw err;
+      }
       const size = Number(item.size) || 0;
       totalBytes += size;
 
@@ -461,7 +472,7 @@ export class DownloadEngine extends EventEmitter {
         taskId,
         name: item.name || path.basename(relPath),
         relativePath: relPath,
-        fullLocalPath,
+        fullLocalPath: planned.fullPath,
         size,
         downloaded: 0,
         link: item.link || item.url,
@@ -473,11 +484,12 @@ export class DownloadEngine extends EventEmitter {
         progress: 0,
         retryCount: 0,
         retryAt: null,
+        ownership: 'owned',
       };
 
       this.checkExistingFileSize(fObj);
-      return fObj;
-    });
+      fileObjects.push(fObj);
+    }
 
     task.files = fileObjects;
     task.totalSize = totalBytes;
@@ -534,7 +546,19 @@ export class DownloadEngine extends EventEmitter {
       const unlockData = await this.client.unlockLink(url);
       const filename = sanitizePathSegment(unlockData.filename || customName || 'download.file');
       task.name = filename;
-      const fullPath = path.join(baseDir, filename);
+      let fullPath;
+      try {
+        const planned = planFileInDestination(baseDir, filename);
+        assertContained(baseDir, planned.fullPath);
+        fullPath = planned.fullPath;
+      } catch (err) {
+        if (err instanceof DestinationError) {
+          this.markTaskError(task, `Rejected destination filename "${filename}": ${err.message}`);
+          this.processQueue();
+          return task;
+        }
+        throw err;
+      }
 
       const fileObj = {
         id: `${taskId}_f0`,
@@ -553,6 +577,7 @@ export class DownloadEngine extends EventEmitter {
         progress: 0,
         retryCount: 0,
         retryAt: null,
+        ownership: 'owned',
       };
 
       task.files = [fileObj];
@@ -611,10 +636,21 @@ export class DownloadEngine extends EventEmitter {
     }
 
     let totalBytes = 0;
-    const fileObjects = filteredList.map((item, idx) => {
-      // Map path to local disk inside task.outputDir
-      const relativeNorm = item.relativePath.split('/').join(path.sep);
-      const fullLocalPath = path.join(task.outputDir, relativeNorm);
+    const fileObjects = [];
+    for (const [idx, item] of filteredList.entries()) {
+      // Plan each payload path through the central containment authority;
+      // traversal, reserved names, or illegal segments fail the whole task.
+      let planned;
+      try {
+        planned = planFileInDestination(task.outputDir, item.relativePath);
+        assertContained(task.baseOutputDir || this.downloadDir, planned.fullPath);
+      } catch (err) {
+        if (err instanceof DestinationError) {
+          this.markTaskError(task, `Rejected file path "${item.relativePath}": ${err.message}`);
+          return;
+        }
+        throw err;
+      }
       totalBytes += item.size;
 
       const fObj = {
@@ -622,7 +658,7 @@ export class DownloadEngine extends EventEmitter {
         taskId: task.id,
         name: item.name,
         relativePath: item.relativePath,
-        fullLocalPath,
+        fullLocalPath: planned.fullPath,
         size: item.size,
         downloaded: 0,
         link: item.link,
@@ -634,11 +670,12 @@ export class DownloadEngine extends EventEmitter {
         progress: 0,
         retryCount: 0,
         retryAt: null,
+        ownership: 'owned',
       };
 
       this.checkExistingFileSize(fObj);
-      return fObj;
-    });
+      fileObjects.push(fObj);
+    }
 
     task.files = fileObjects;
     task.totalSize = totalBytes;
