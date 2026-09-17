@@ -219,6 +219,7 @@ export class DownloadEngine extends EventEmitter {
       name: task.name,
       type: task.type,
       status,
+      ownership: task.ownership ?? 'unknown',
       cloudStatus: task.cloudStatus,
       cloudProgress: task.cloudProgress,
       totalSize: task.totalSize,
@@ -250,6 +251,8 @@ export class DownloadEngine extends EventEmitter {
         error: f.error,
         progress: f.progress,
         retryCount: f.retryCount || 0,
+        ownership: f.ownership ?? 'unknown',
+        verification: f.verification ?? 'unknown',
       })),
     };
   }
@@ -692,13 +695,19 @@ export class DownloadEngine extends EventEmitter {
     try {
       if (fs.existsSync(file.fullLocalPath)) {
         const stat = fs.statSync(file.fullLocalPath);
-        if (file.size > 0 && stat.size >= file.size) {
+        // Exact length only: an oversized on-disk file is a conflict, never
+        // silently accepted as completed (plan invariant 8).
+        if (file.size > 0 && stat.size === file.size) {
           file.downloaded = file.size;
           file.progress = 100;
           file.status = 'completed';
-        } else {
+          file.verification = file.verification === 'unknown' ? 'size_verified' : file.verification;
+        } else if (stat.size > 0) {
           file.downloaded = stat.size;
           file.progress = file.size > 0 ? Math.round((stat.size / file.size) * 100) : 0;
+          if (file.size > 0 && stat.size > file.size) {
+            file.ownership = 'conflict';
+          }
         }
       }
     } catch {
@@ -995,14 +1004,17 @@ export class DownloadEngine extends EventEmitter {
       let startOffset = 0;
       if (fs.existsSync(file.fullLocalPath)) {
         const stat = await fs.promises.stat(file.fullLocalPath);
-        if (file.size > 0 && stat.size >= file.size) {
-          // File already completely downloaded!
+        if (file.size > 0 && stat.size === file.size) {
+          // File already exactly complete on disk!
           file.downloaded = file.size;
           file.progress = 100;
           file.status = 'completed';
           this.updateTaskProgress(task);
           this.processQueue();
           return;
+        }
+        if (file.size > 0 && stat.size > file.size) {
+          throw new Error(`Oversized existing file: got ${stat.size} of ${file.size} bytes`);
         }
         startOffset = stat.size;
       }
@@ -1117,6 +1129,8 @@ export class DownloadEngine extends EventEmitter {
         file.directUrl = null; // cached unlock URLs may have expired
         this.processQueue();
       }, delay);
+      this.retryTimers.add(timer);
+      if (timer.unref) timer.unref();
     } else {
       file.status = 'error';
       file.error = message;
@@ -1289,14 +1303,12 @@ export class DownloadEngine extends EventEmitter {
         if (stream) {
           try { stream.abortController.abort(); } catch {}
           try { stream.writeStream?.destroy(); } catch {}
-          this.activeFileStreams.delete(file.id);
         }
       } else if (file.status === 'pending') {
         file.status = 'paused';
         file.retryAt = null;
       }
     }
-
     this.emit('taskUpdated', task);
     this._persist();
     return true;
@@ -1376,8 +1388,8 @@ export class DownloadEngine extends EventEmitter {
     const task = this.tasks.get(taskId);
     if (!task) return false;
     const p = parseInt(priority, 10);
-    if (Number.isNaN(p)) return false;
-    task.priority = Math.min(2, Math.max(0, p));
+    if (!Number.isInteger(p) || p < 0 || p > 2 || String(p) !== String(priority).trim()) return false;
+    task.priority = p;
     this.emit('taskUpdated', task);
     this._persist();
     this.processQueue();
@@ -1391,13 +1403,14 @@ export class DownloadEngine extends EventEmitter {
     const task = this.tasks.get(taskId);
     if (!task) return false;
 
-    // Abort active streams
+    // Abort active streams; removal from activeFileStreams happens in each
+    // operation's own finally block after the writer has drained, so pause
+    // cannot race registration/deregistration.
     for (const file of task.files) {
       const stream = this.activeFileStreams.get(file.id);
       if (stream) {
         try { stream.abortController.abort(); } catch {}
         try { stream.writeStream?.destroy(); } catch {}
-        this.activeFileStreams.delete(file.id);
       }
     }
 
