@@ -326,13 +326,23 @@ function showToast(message, type = 'info') {
 let ws = null;
 let reconnectTimer = null;
 
-function connectWebSocket() {
+async function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // WS keeps the token handshake until the Stage C ticket flow; REST is header-only.
-  const token = getStoredToken();
-  const wsUrl = token
-    ? `${protocol}//${window.location.host}?token=${encodeURIComponent(token)}`
-    : `${protocol}//${window.location.host}`;
+  let wsUrl = `${protocol}//${window.location.host}`;
+
+  // Authenticated servers require a short-lived single-use ticket; the token
+  // itself never travels in the socket URL.
+  if (getStoredToken()) {
+    try {
+      const ticketRes = await apiFetch('/api/ws-ticket', { method: 'POST' });
+      if (!ticketRes.ok) throw new Error('ticket request failed');
+      const { ticket } = await ticketRes.json();
+      wsUrl = `${wsUrl}?ticket=${encodeURIComponent(ticket)}`;
+    } catch {
+      scheduleReconnect();
+      return;
+    }
+  }
 
   ws = new WebSocket(wsUrl);
 
@@ -354,12 +364,17 @@ function connectWebSocket() {
   ws.onclose = () => {
     elements.wsStatus.innerHTML = '<span class="pulse-dot" style="background:var(--accent-primary);box-shadow:0 0 8px var(--accent-primary);"></span><span class="socket-text mono">OFFLINE</span>';
     elements.wsStatus.style.color = 'var(--accent-primary)';
-    reconnectTimer = setTimeout(connectWebSocket, 2500);
+    scheduleReconnect();
   };
 
   ws.onerror = () => {
     ws.close();
   };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connectWebSocket, 2500);
 }
 
 function handleWsMessage(msg) {

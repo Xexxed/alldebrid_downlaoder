@@ -269,15 +269,45 @@ onEngine('taskDeleted', (taskId) => {
   broadcast({ type: 'task_deleted', taskId });
 });
 
+// ==========================================
+// WebSocket ticket auth (short-lived, single-use)
+// ==========================================
+
+const WS_TICKET_TTL_MS = 30_000;
+const wsTickets = new Map();
+
+function issueWsTicket() {
+  const ticket = `${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+  wsTickets.set(ticket, { expiresAt: Date.now() + WS_TICKET_TTL_MS });
+  if (wsTickets.size > 1000) {
+    const now = Date.now();
+    for (const [key, value] of wsTickets) {
+      if (value.expiresAt < now) wsTickets.delete(key);
+    }
+  }
+  return ticket;
+}
+
+function consumeWsTicket(ticket) {
+  const entry = wsTickets.get(ticket);
+  wsTickets.delete(ticket);
+  return !!entry && Date.now() <= entry.expiresAt;
+}
+
+app.post('/api/ws-ticket', (req, res) => {
+  res.json({ ticket: issueWsTicket(), expiresInSeconds: WS_TICKET_TTL_MS / 1000 });
+});
+
 wss.on('connection', (ws, req) => {
-  // Enforce auth token on WebSocket handshakes when configured
+  // Enforce auth on WebSocket handshakes when configured: single-use short-lived
+  // ticket (header) or bearer token; long-lived query tokens are not accepted.
   if (authToken) {
-    let token = '';
+    let ticket = '';
     try {
       const url = new URL(req.url, 'http://localhost');
-      token = url.searchParams.get('token') || '';
+      ticket = String(url.searchParams.get('ticket') || '');
     } catch {}
-    if (token !== authToken) {
+    if (!ticket || !consumeWsTicket(ticket)) {
       ws.close(4401, 'Unauthorized');
       return;
     }
@@ -1268,6 +1298,7 @@ JACKETT_API_KEY=${candidate.jackettApiKey}
   if (apiKey !== undefined) client.setApiKey(apiKey);
   applyBandwidthPolicy();
   if (previousAuthToken !== authToken) {
+    wsTickets.clear();
     for (const wsClient of wss.clients) wsClient.terminate();
   }
 
