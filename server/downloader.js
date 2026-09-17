@@ -19,8 +19,13 @@ class SpeedLimiter {
     this.limit = 0;
     this.tokens = 0;
     this.waiters = [];
+    this._timer = null;
+  }
+
+  start() {
+    if (this._timer) return;
     this._timer = setInterval(() => this._refill(), 100);
-    if (this._timer.unref) this._timer.unref();
+    this._timer.unref?.();
   }
 
   setLimit(bytesPerSec) {
@@ -64,6 +69,7 @@ class SpeedLimiter {
 
   destroy() {
     clearInterval(this._timer);
+    this._timer = null;
     this.waiters.splice(0).forEach((w) => w.resolve());
   }
 }
@@ -94,9 +100,39 @@ export class DownloadEngine extends EventEmitter {
     this.persistSweepInterval = null;
     this.stats = { totalBytes: 0, activeSeconds: 0, peakSpeed: 0, perDay: {} };
 
+    this.stopped = options.autoStart === false;
+    this.operations = new Map();
+    this.retryTimers = new Set();
+    this.stopPromise = null;
     this.ensureDownloadDir();
     this.restoreFromPersistence();
-    this.startBackgroundLoops();
+    if (!this.stopped) this.start();
+  }
+
+  start() {
+    if (this.stopPromise) throw new Error('Stopped engine cannot be restarted');
+    this.stopped = false;
+    this.speedLimiter.start();
+    if (!this.speedTrackerInterval) this.startBackgroundLoops();
+  }
+
+  stop() {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopped = true;
+    clearInterval(this.pollInterval);
+    clearInterval(this.speedTrackerInterval);
+    clearInterval(this.persistSweepInterval);
+    for (const timer of this.retryTimers) clearTimeout(timer);
+    this.retryTimers.clear();
+    for (const stream of this.activeFileStreams.values()) {
+      stream.abortController.abort();
+      stream.writeStream?.destroy();
+    }
+    this.speedLimiter.destroy();
+    this.stopPromise = Promise.allSettled([...this.operations.values()]).then(() => {
+      this.flushPersistenceSync();
+    });
+    return this.stopPromise;
   }
 
   ensureDownloadDir() {
@@ -725,6 +761,7 @@ export class DownloadEngine extends EventEmitter {
    * Tasks are scheduled by priority (0=high..2=low), then by insertion order.
    */
   async processQueue() {
+    if (this.stopped) return;
     let runningCount = this.activeFileStreams.size;
     if (runningCount >= this.maxConcurrent) return;
 
@@ -864,7 +901,15 @@ export class DownloadEngine extends EventEmitter {
   /**
    * Handles downloading a single file with folder creation, link unlock, and range resume
    */
-  async downloadFileStream(task, file) {
+  downloadFileStream(task, file) {
+    if (this.stopped || this.operations.has(file.id)) return this.operations.get(file.id);
+    const operation = this.runFileStream(task, file);
+    this.operations.set(file.id, operation);
+    operation.finally(() => this.operations.delete(file.id)).catch(() => {});
+    return operation;
+  }
+
+  async runFileStream(task, file) {
     // 1. Check if file is already fully downloaded on disk before making any network calls
     this.checkExistingFileSize(file);
     if (file.status === 'completed') {
@@ -878,12 +923,13 @@ export class DownloadEngine extends EventEmitter {
     this.emit('fileStatusChange', { task, file });
 
     const abortController = new AbortController();
-    let writeStream = null;
+    this.activeFileStreams.set(file.id, { abortController, writeStream: null });
 
     try {
       // 2. Ensure target directory exists on disk (preserving folder structure)
       const targetDir = path.dirname(file.fullLocalPath);
       await fs.promises.mkdir(targetDir, { recursive: true });
+      abortController.signal.throwIfAborted();
 
       // 3. Check resume offset
       let startOffset = 0;
@@ -974,7 +1020,8 @@ export class DownloadEngine extends EventEmitter {
       file.error = `${message} (retry ${attempts}/${this.maxRetries} in ${Math.round(delay / 1000)}s)`;
       console.warn(`[Engine] ${file.name} failed (${message}). Auto-retry ${attempts}/${this.maxRetries} in ${delay}ms`);
 
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        this.retryTimers.delete(timer);
         if (!this.tasks.has(task.id)) return;
         if (file.status !== 'pending' || !file.retryAt) return;
         if (task.status === 'paused') return;
