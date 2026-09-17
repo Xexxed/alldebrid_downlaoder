@@ -690,10 +690,10 @@ function createTaskCardHtml(task) {
           </button>
         ` : ''}
 
-        ${isCompleted && !task.extracted ? `
-          <button class="btn btn-secondary btn-sm" disabled title="Archive extraction is unavailable until safe staging and no-clobber publishing are implemented">
+        ${isCompleted && !task.extracted && !task.isExtracting ? `
+          <button class="btn btn-secondary btn-sm" onclick="manualExtractTask('${task.id}')" title="Extract archives into the task folder (no-clobber)">
             <span class="btn-svg">${ICONS.archive}</span>
-            <span>EXTRACTION UNAVAILABLE</span>
+            <span>EXTRACT</span>
           </button>
         ` : ''}
 
@@ -869,8 +869,15 @@ window.openLocalFolder = async function (taskId) {
   }
 };
 
-window.manualExtractTask = function () {
-  showToast('Archive extraction is unavailable until a staged, owned, no-clobber extraction pipeline is implemented.', 'info');
+window.manualExtractTask = async function (taskId) {
+  try {
+    const res = await apiFetch(`/api/downloads/${taskId}/extract`, { method: 'POST' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(data.result?.message || 'Extraction complete', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 };
 
 window.pauseTask = async function (taskId) {
@@ -1280,11 +1287,13 @@ function openDownloadReview(previews) {
     }
   }
 
-  for (const checkbox of [elements.reviewAutoExtractCheckbox, elements.reviewDeletePartsCheckbox]) {
-    if (checkbox) {
-      checkbox.checked = false;
-      checkbox.disabled = true;
-    }
+  if (elements.reviewAutoExtractCheckbox) {
+    elements.reviewAutoExtractCheckbox.checked = false;
+    elements.reviewAutoExtractCheckbox.disabled = false;
+  }
+  if (elements.reviewDeletePartsCheckbox) {
+    elements.reviewDeletePartsCheckbox.checked = false;
+    elements.reviewDeletePartsCheckbox.disabled = true;
   }
 
   // Initialize selected files (skip already complete files by default if desired or include uncompleted)
@@ -1399,6 +1408,16 @@ elements.deselectAllReviewFilesBtn.onclick = () => {
   renderReviewTree();
 };
 
+if (elements.reviewAutoExtractCheckbox) {
+  elements.reviewAutoExtractCheckbox.onchange = () => {
+    if (!elements.reviewDeletePartsCheckbox) return;
+    if (!elements.reviewAutoExtractCheckbox.checked) {
+      elements.reviewDeletePartsCheckbox.checked = false;
+    }
+    elements.reviewDeletePartsCheckbox.disabled = !elements.reviewAutoExtractCheckbox.checked;
+  };
+}
+
 // Confirm & Launch Download from Review Screen
 elements.confirmReviewDownloadBtn.onclick = async () => {
   if (state.reviewPreviews.length === 0) return;
@@ -1411,8 +1430,8 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
     return;
   }
 
-  const autoExtract = false;
-  const deleteArchiveAfterExtract = false;
+  const autoExtract = !!elements.reviewAutoExtractCheckbox?.checked;
+  const deleteArchiveAfterExtract = autoExtract && !!elements.reviewDeletePartsCheckbox?.checked;
 
   elements.confirmReviewDownloadBtn.disabled = true;
   elements.confirmReviewDownloadBtn.textContent = 'DISPATCHING PIPELINE...';

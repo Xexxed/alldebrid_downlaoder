@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter, once } from 'node:events';
 import http from 'node:http';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, fork } from 'node:child_process';
 import { WebSocket } from 'ws';
 import { fileURLToPath } from 'node:url';
 
@@ -77,6 +77,68 @@ test('server import performs no configuration, persistence, directory, timer, so
     stdio: 'pipe',
   });
 });
+
+for (const entry of ['../server/server.js', '../server/dev.js']) {
+  test(`${entry} exits after repeated Ctrl+C and releases its state lock`, { timeout: 15_000 }, async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'alldebrid-signals-'));
+    const statePath = path.join(root, 'state.json');
+    const preload = `
+      setInterval(() => {}, 60_000);
+      process.on('message', message => {
+        if (message === 'test-ctrl-c') {
+          process.emit('SIGINT');
+          process.emit('SIGINT');
+        }
+      });
+    `;
+    const child = fork(fileURLToPath(new URL(entry, import.meta.url)), [], {
+      execArgv: ['--import', `data:text/javascript,${encodeURIComponent(preload)}`],
+      env: {
+        ...process.env,
+        APP_DATA_DIR: root,
+        STATE_PATH: statePath,
+        DOWNLOAD_DIR: path.join(root, 'downloads'),
+        PORT: '0',
+        HOST: '127.0.0.1',
+        ALLDEBRID_API_KEY: '',
+      },
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    });
+    const exited = once(child, 'exit');
+    let output = '';
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { output += chunk; });
+    t.after(async () => {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      await exited;
+      fs.rmSync(root, { recursive: true, force: true });
+    });
+    await Promise.race([
+      new Promise(resolve => {
+        const ready = () => {
+          if (!output.includes('AllDebrid Downloader listening on port')) return;
+          child.stdout.off('data', ready);
+          resolve();
+        };
+        child.stdout.on('data', ready);
+      }),
+      exited.then(() => assert.fail(`Server exited before startup: ${output}`)),
+    ]);
+    assert.ok(fs.existsSync(`${statePath}.lock`));
+    child.send('test-ctrl-c');
+    const result = await Promise.race([
+      exited,
+      new Promise((_, reject) => {
+        const timer = setTimeout(() => reject(new Error(`Shutdown did not exit: ${output}`)), 5_000);
+        timer.unref();
+        exited.then(() => clearTimeout(timer));
+      }),
+    ]);
+    assert.deepEqual(result, [0, null], output);
+    assert.equal(fs.existsSync(`${statePath}.lock`), false);
+    assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).version, 2);
+  });
+}
 
 test('injected application starts on loopback port zero and closes idempotently', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'alldebrid-lifecycle-'));

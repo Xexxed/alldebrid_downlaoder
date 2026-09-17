@@ -130,6 +130,7 @@ export class DownloadEngine extends EventEmitter {
 
     this.stopped = options.autoStart === false;
     this.operations = new Map();
+    this.extractionOperations = new Set();
     this.retryTimers = new Set();
     this.stopPromise = null;
     this.ensureDownloadDir();
@@ -157,9 +158,10 @@ export class DownloadEngine extends EventEmitter {
       stream.writeStream?.destroy();
     }
     this.speedLimiter.destroy();
-    this.stopPromise = Promise.allSettled([...this.operations.values()]).then(() => {
-      this.flushPersistenceSync();
-    });
+    this.stopPromise = Promise.allSettled([...this.operations.values(), ...this.extractionOperations])
+      .then(() => {
+        this.flushPersistenceSync();
+      });
     return this.stopPromise;
   }
 
@@ -272,7 +274,7 @@ export class DownloadEngine extends EventEmitter {
         size: f.size,
         downloaded: f.downloaded,
         link: f.link || null,
-        status: f.status === 'completed' ? 'completed' : 'pending',
+        status: f.status === 'completed' || f.status === 'deleted_after_extract' ? f.status : 'pending',
         error: f.error,
         progress: f.progress,
         retryCount: f.retryCount || 0,
@@ -312,7 +314,7 @@ export class DownloadEngine extends EventEmitter {
             task.status = 'ready_to_download';
           }
           for (const f of task.files) {
-            if (f.status !== 'completed') {
+            if (f.status !== 'completed' && f.status !== 'deleted_after_extract') {
               f.status = 'pending';
               f.error = null;
             }
@@ -864,7 +866,7 @@ export class DownloadEngine extends EventEmitter {
       let firstError = null;
 
       for (const file of task.files) {
-        if (file.status === 'completed') {
+        if (file.status === 'completed' || file.status === 'deleted_after_extract') {
           continue;
         }
 
@@ -924,10 +926,13 @@ export class DownloadEngine extends EventEmitter {
       task.isExtracting = true;
       task.status = 'extracting';
       task.extractionStatus = 'extracting';
+      task.extractionError = null;
+      task.extractionMessage = null;
       this.emit('taskUpdated', task);
 
+      const extraction = this.runExtraction(task, task.deleteArchiveAfterExtract);
       try {
-        const result = await extractTaskArchives(task, task.deleteArchiveAfterExtract);
+        const result = await extraction;
         task.isExtracting = false;
         task.extracted = true;
         task.extractionStatus = 'completed';
@@ -953,29 +958,54 @@ export class DownloadEngine extends EventEmitter {
   }
 
   /**
+   * Runs extractTaskArchives with shutdown drainage tracking. The extraction
+   * is registered before the first await so stop() always sees it.
+   */
+  runExtraction(task, deleteParts) {
+    const extraction = extractTaskArchives(task, deleteParts);
+    this.extractionOperations.add(extraction);
+    return extraction.finally(() => {
+      this.extractionOperations.delete(extraction);
+      this._persist();
+    });
+  }
+
+  /**
    * Manually triggers archive extraction on a task
    */
   async extractTask(taskId) {
     const task = this.tasks.get(taskId);
-    if (!task) throw new Error('Task not found');
+    if (!task) throw Object.assign(new Error('Task not found'), { code: 'TASK_NOT_FOUND' });
+    if (this.stopped) throw Object.assign(new Error('Engine is stopped'), { code: 'ENGINE_STOPPED' });
+    if (task.isExtracting) throw Object.assign(new Error('Extraction already running'), { code: 'EXTRACTION_BUSY' });
+    if (task.status === 'extracting') throw Object.assign(new Error('Extraction already running'), { code: 'EXTRACTION_BUSY' });
+
+    const allDone = task.files.length > 0 && task.files.every((f) => f.status === 'completed' || f.status === 'deleted_after_extract');
+    if (!allDone || task.status === 'initializing') {
+      throw Object.assign(new Error('Task downloads are not complete'), { code: 'EXTRACTION_NOT_READY' });
+    }
 
     task.isExtracting = true;
     task.extractionStatus = 'extracting';
     task.extractionError = null;
+    task.extractionMessage = null;
+    if (task.status !== 'completed') task.status = 'extracting';
     this.emit('taskUpdated', task);
 
     try {
-      const result = await extractTaskArchives(task, task.deleteArchiveAfterExtract);
+      const result = await this.runExtraction(task, task.deleteArchiveAfterExtract);
       task.isExtracting = false;
       task.extracted = true;
       task.extractionStatus = 'completed';
       task.extractionMessage = result.message;
+      if (task.status === 'extracting') task.status = 'completed';
       this.emit('taskUpdated', task);
       return result;
     } catch (err) {
       task.isExtracting = false;
       task.extractionStatus = 'error';
       task.extractionError = err.message || 'Extraction failed';
+      if (task.status === 'extracting') task.status = 'completed';
       this.emit('taskUpdated', task);
       throw err;
     }
@@ -1044,6 +1074,7 @@ export class DownloadEngine extends EventEmitter {
           file.downloaded = file.size;
           file.progress = 100;
           file.status = 'completed';
+          file.verification = file.verification === 'unknown' ? 'size_verified' : file.verification;
           this.updateTaskProgress(task);
           this.processQueue();
           return;
@@ -1309,7 +1340,7 @@ export class DownloadEngine extends EventEmitter {
 
     for (const f of task.files) {
       totalDownloaded += f.downloaded;
-      if (f.status !== 'completed') {
+      if (f.status !== 'completed' && f.status !== 'deleted_after_extract') {
         allDone = false;
       }
     }
@@ -1506,7 +1537,7 @@ export class DownloadEngine extends EventEmitter {
       retryingCount: task.files.filter((f) => f.status === 'pending' && f.retryAt && f.retryAt > Date.now()).length,
       nextRetryAt: task.files.reduce((min, f) => (f.retryAt && (!min || f.retryAt < min) ? f.retryAt : min), null),
       fileCount: task.files.length,
-      completedFileCount: task.files.filter((f) => f.status === 'completed').length,
+      completedFileCount: task.files.filter((f) => f.status === 'completed' || f.status === 'deleted_after_extract').length,
     }));
   }
 

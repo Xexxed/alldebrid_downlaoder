@@ -8,11 +8,6 @@ import { test } from 'node:test';
 import { DownloadEngine } from '../server/downloader.js';
 import { extractTaskArchives, detectArchiveGroups, isArchiveFile } from '../server/extractor.js';
 
-const unavailable = {
-  code: 'EXTRACTION_UNAVAILABLE',
-  message: 'Archive extraction is unavailable until a staged, owned, no-clobber extraction pipeline is implemented.',
-};
-
 function makeTask(id, outputDir, files = []) {
   return {
     id,
@@ -26,6 +21,23 @@ function makeTask(id, outputDir, files = []) {
     files,
   };
 }
+
+function makeVerifiedFile(name, fullLocalPath, size, overrides = {}) {
+  return {
+    id: `${name}-id`,
+    name,
+    fullLocalPath,
+    size,
+    downloaded: size,
+    status: 'completed',
+    ownership: 'owned',
+    verification: 'size_verified',
+    ...overrides,
+  };
+}
+
+// Minimal valid empty-zip fixture (EOCD only): bsdtar can open it and find no entries.
+const emptyZip = Buffer.from('PK\x05\x06' + '\0'.repeat(18));
 
 for (const deleteFiles of [false, true]) {
   test(`cancelTask is metadata-only with legacy deleteFiles=${deleteFiles}`, async () => {
@@ -52,61 +64,41 @@ for (const deleteFiles of [false, true]) {
   });
 }
 
-test('extraction rejects task archives without mutating payloads, unrelated data or metadata', async () => {
+test('extraction with unprovenanced archives is a pure no-op', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adc-extract-safe-'));
   try {
     const archivePath = path.join(dir, 'sample.zip');
     const markerPath = path.join(dir, 'existing-output.txt');
     const unrelatedPath = path.join(dir, 'unrelated.zip');
-    const archive = Buffer.from('PK\x05\x06' + '\0'.repeat(18));
+    const archive = emptyZip;
     fs.writeFileSync(archivePath, archive);
     fs.writeFileSync(markerPath, 'original content');
     fs.writeFileSync(unrelatedPath, 'unrelated archive');
-    const task = makeTask('blocked', dir, [{ name: 'sample.zip', fullLocalPath: archivePath }]);
+    // File lacks ownership/verification provenance: must never be extracted or deleted.
+    const task = makeTask('blocked', dir, [{ name: 'sample.zip', fullLocalPath: archivePath, status: 'completed' }]);
     const originalTask = structuredClone(task);
 
     for (const deleteParts of [false, true]) {
-      await assert.rejects(extractTaskArchives(task, deleteParts), unavailable);
+      const result = await extractTaskArchives(task, deleteParts);
+      assert.deepEqual(result.extracted, []);
+      assert.deepEqual(result.deleted, []);
       assert.deepEqual(task, originalTask);
-      assert.deepEqual(fs.readFileSync(archivePath), archive);
-      assert.equal(fs.readFileSync(markerPath, 'utf8'), 'original content');
-      assert.equal(fs.readFileSync(unrelatedPath, 'utf8'), 'unrelated archive');
-      assert.deepEqual(fs.readdirSync(dir).sort(), ['existing-output.txt', 'sample.zip', 'unrelated.zip']);
     }
-    await assert.rejects(extractTaskArchives(makeTask('empty', dir)), unavailable);
+    assert.deepEqual(fs.readFileSync(archivePath), archive);
+    assert.equal(fs.readFileSync(markerPath, 'utf8'), 'original content');
+    assert.equal(fs.readFileSync(unrelatedPath, 'utf8'), 'unrelated archive');
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['existing-output.txt', 'sample.zip', 'unrelated.zip']);
+
+    // Tasks with no eligible files are pure no-ops; invalid tasks reject without creating directories.
+    const emptyResult = await extractTaskArchives(makeTask('empty', dir));
+    assert.deepEqual(emptyResult, { message: 'No archives to extract', extracted: [], deleted: [] });
+    await assert.rejects(extractTaskArchives(null), /Task/);
+    await assert.rejects(extractTaskArchives(), /Task/);
     const missingDir = path.join(dir, 'not-created');
-    await assert.rejects(extractTaskArchives(makeTask('missing', missingDir)), unavailable);
+    await extractTaskArchives(makeTask('missing', missingDir));
     assert.equal(fs.existsSync(missingDir), false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('extraction rejects without accessing task properties, filesystem or child processes', async (t) => {
-  const calls = [];
-  const denied = (name) => () => {
-    calls.push(name);
-    throw new Error(`Unexpected access: ${name}`);
-  };
-  try {
-    for (const name of ['existsSync', 'statSync', 'readdirSync', 'readFileSync', 'mkdirSync', 'writeFileSync', 'unlinkSync', 'rmSync', 'createReadStream', 'createWriteStream']) {
-      t.mock.method(fs, name, denied(`fs.${name}`));
-    }
-    for (const name of ['stat', 'readdir', 'readFile', 'mkdir', 'writeFile', 'unlink', 'rm', 'open']) {
-      t.mock.method(fs.promises, name, denied(`fs.promises.${name}`));
-    }
-    for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) {
-      t.mock.method(childProcess, name, denied(`childProcess.${name}`));
-    }
-    syncBuiltinESMExports();
-    const task = new Proxy({}, { get: denied('task property') });
-    await assert.rejects(extractTaskArchives(task, true), unavailable);
-    await assert.rejects(extractTaskArchives(null), unavailable);
-    await assert.rejects(extractTaskArchives(), unavailable);
-    assert.deepEqual(calls, []);
-  } finally {
-    t.mock.restoreAll();
-    syncBuiltinESMExports();
   }
 });
 

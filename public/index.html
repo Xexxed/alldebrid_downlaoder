@@ -625,13 +625,12 @@
             <div class="hpc-label"><span>ARCHIVE &amp; PART FILE AUTOMATION</span></div>
             <div class="extraction-options-grid">
               <label class="hpc-checkbox-card" id="autoExtractCard">
-                <input type="checkbox" id="reviewAutoExtractCheckbox" disabled />
+                <input type="checkbox" id="reviewAutoExtractCheckbox" />
                 <div class="chk-content">
                   <div class="chk-title-row">
                     <span class="chk-title mono">AUTO-EXTRACT ARCHIVE(S)</span>
-                    <span class="telemetry-badge" style="font-size:9px;padding:2px 6px;">UNAVAILABLE</span>
                   </div>
-                  <div class="chk-desc mono">Extraction is unavailable until safe staging and no-clobber publishing are implemented. Downloads remain archived.</div>
+                  <div class="chk-desc mono">After download completes, archives are extracted safely into the destination. Existing files are never overwritten.</div>
                 </div>
               </label>
 
@@ -640,9 +639,8 @@
                 <div class="chk-content">
                   <div class="chk-title-row">
                     <span class="chk-title mono">DELETE PART FILES AFTER EXTRACTION</span>
-                    <span class="telemetry-badge" style="font-size:9px;padding:2px 6px;color:var(--accent-primary);">UNAVAILABLE</span>
                   </div>
-                  <div class="chk-desc mono">Archive cleanup is unavailable. Downloaded archives and part files are kept on disk.</div>
+                  <div class="chk-desc mono">Remove verified archive parts after successful extraction. Requires auto-extract.</div>
                 </div>
               </label>
             </div>

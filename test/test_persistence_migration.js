@@ -158,6 +158,51 @@ test('state lock rejects a second writer before reading or migrating and release
   assert.throws(() => first.writeNow(), { code: 'STATE_CLOSED' });
 });
 
+test('dead lock owner is recovered without changing saved state', (t) => {
+  const statePath = path.join(makeTempDir('adc-stale-'), 'state.json');
+  const saved = JSON.stringify({ version: 2, tasks: [], stats: { totalBytes: 123 } });
+  writeState(statePath, saved);
+  writeState(`${statePath}.lock`, { pid: 12345, token: 'dead-owner' });
+  t.mock.method(process, 'kill', (pid, signal) => {
+    assert.equal(pid, 12345);
+    assert.equal(signal, 0);
+    throw Object.assign(new Error('No process'), { code: 'ESRCH' });
+  });
+  const store = createPersistence(statePath);
+  assert.equal(store.data.stats.totalBytes, 123);
+  assert.equal(fs.readFileSync(statePath, 'utf8'), saved);
+  assert.equal(JSON.parse(fs.readFileSync(`${statePath}.lock`, 'utf8')).pid, process.pid);
+  assert.throws(() => new Persistence(statePath), { code: 'STATE_LOCKED' });
+  store.close();
+  assert.equal(fs.existsSync(`${statePath}.lock`), false);
+});
+
+test('recovery never removes a lock replaced by another instance', (t) => {
+  const statePath = path.join(makeTempDir('adc-lock-race-'), 'state.json');
+  const lockPath = `${statePath}.lock`;
+  writeState(lockPath, { pid: 12345, token: 'dead-owner' });
+  const replacement = JSON.stringify({ pid: process.pid, token: 'new-owner' });
+  t.mock.method(process, 'kill', () => {
+    fs.writeFileSync(lockPath, replacement);
+    throw Object.assign(new Error('No process'), { code: 'ESRCH' });
+  });
+  assert.throws(() => new Persistence(statePath), { code: 'STATE_LOCKED' });
+  assert.equal(fs.readFileSync(lockPath, 'utf8'), replacement);
+  assert.equal(fs.existsSync(`${lockPath}.recovery`), false);
+});
+
+test('unverifiable lock owners are preserved', (t) => {
+  const statePath = path.join(makeTempDir('adc-uncertain-'), 'state.json');
+  t.mock.method(process, 'kill', () => {
+    throw Object.assign(new Error('Access denied'), { code: 'EPERM' });
+  });
+  for (const raw of ['{', '', 'null', '{"pid":0}', '{"pid":-1}', '{"pid":"123"}', '{"pid":123,"token":"owner"}']) {
+    writeState(`${statePath}.lock`, raw);
+    assert.throws(() => new Persistence(statePath), { code: 'STATE_LOCKED' });
+    assert.equal(fs.readFileSync(`${statePath}.lock`, 'utf8'), raw);
+  }
+});
+
 test('failed flush retains dirty state and old snapshot until retry succeeds', async (t) => {
   const tmp = makeTempDir('adc-flush-');
   const statePath = path.join(tmp, 'state.json');

@@ -63,6 +63,65 @@ function migrateV1toV2(v1) {
   };
 }
 
+function acquireStateLock(lockPath) {
+  const locked = (owner = 'unknown') => Object.assign(
+    new Error(`State store is locked by process ${owner}. Close the running instance using "${lockPath}". Unverifiable locks require manual inspection.`),
+    { code: 'STATE_LOCKED' },
+  );
+  const open = () => fs.openSync(lockPath, 'wx', 0o600);
+  try {
+    return open();
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+  }
+  let raw;
+  let owner;
+  try {
+    raw = fs.readFileSync(lockPath, 'utf8');
+    owner = JSON.parse(raw)?.pid;
+  } catch (error) {
+    if (error.code === 'ENOENT') return open();
+    throw locked();
+  }
+  if (!Number.isSafeInteger(owner) || owner <= 0) throw locked();
+  if (owner === process.pid) throw locked(owner);
+  try {
+    process.kill(owner, 0);
+    throw locked(owner);
+  } catch (error) {
+    if (error.code !== 'ESRCH') throw locked(owner);
+  }
+  const recoveryPath = `${lockPath}.recovery`;
+  let recoveryFd;
+  try {
+    recoveryFd = fs.openSync(recoveryPath, 'wx', 0o600);
+  } catch (error) {
+    if (error.code === 'EEXIST') throw locked('unknown (lock recovery in progress)');
+    throw error;
+  }
+  try {
+    let current;
+    try {
+      current = fs.readFileSync(lockPath, 'utf8');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (current !== undefined) {
+      if (current !== raw) throw locked();
+      fs.unlinkSync(lockPath);
+    }
+    try {
+      return open();
+    } catch (error) {
+      if (error.code === 'EEXIST') throw locked();
+      throw error;
+    }
+  } finally {
+    fs.closeSync(recoveryFd);
+    fs.unlinkSync(recoveryPath);
+  }
+}
+
 export class Persistence {
   constructor(filePath, options = {}) {
     const absolutePath = path.resolve(filePath);
@@ -79,14 +138,7 @@ export class Persistence {
     this.loadError = null;
     this.migrationReport = null;
     this.data = emptyState();
-    try {
-      this._lockFd = fs.openSync(this.lockPath, 'wx', 0o600);
-    } catch (error) {
-      if (error.code === 'EEXIST') {
-        throw Object.assign(new Error('State store is locked. Close the other instance; after an unclean exit, verify no writer is running before removing the state lock.'), { code: 'STATE_LOCKED' });
-      }
-      throw error;
-    }
+    this._lockFd = acquireStateLock(this.lockPath);
     try {
       fs.writeFileSync(this._lockFd, JSON.stringify({ pid: process.pid, token: this._lockToken }));
       this.load();

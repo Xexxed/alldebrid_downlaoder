@@ -1481,22 +1481,35 @@ export async function startServer(customPort = null, options = {}) {
 
 const isDirectExecution = process.argv[1] && path.resolve(process.argv[1]) === __filename;
 if (isDirectExecution && !process.versions.electron) {
-  startServer().then((application) => {
-    console.log(`AllDebrid Downloader listening on port ${application.port}`);
-    const shutdown = async () => {
-      try { await application.close(); } catch (error) {
-        console.error('Failed to close server:', error.message);
-        process.exitCode = 1;
-      } finally {
-        process.off('SIGINT', shutdown);
-        process.off('SIGTERM', shutdown);
-      }
-    };
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
+  let shuttingDown = false;
+  let startup;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    let exitCode = 0;
+    try {
+      const application = await startup;
+      await application.close();
+    } catch (error) {
+      console.error('Failed to close server:', error.message);
+      exitCode = 1;
+    }
+    process.exit(exitCode);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+  if (process.send) {
+    process.on('message', (message) => {
+      if (message?.type === 'shutdown') shutdown();
+    });
+    process.on('disconnect', shutdown);
+  }
+  startup = startServer();
+  startup.then((application) => {
+    if (!shuttingDown) console.log(`AllDebrid Downloader listening on port ${application.port}`);
   }).catch((error) => {
     console.error('Failed to start server:', error.message);
-    process.exitCode = 1;
+    process.exit(1);
   });
 }
 
