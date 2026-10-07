@@ -99,8 +99,15 @@ engine.setSpeedLimit(speedLimitKbps * 1024);
 engine.diskPolicy?.setMinFreeBytes?.(minFreeGb * 1024 ** 3);
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use((err, req, res, next) => {
+  if (err) {
+    const status = err.status || err.statusCode || 400;
+    return res.status(status).json({ error: err.message || 'Invalid request body' });
+  }
+  next();
+});
 app.use(express.static(path.join(ROOT_DIR, 'public')));
 app.use('/assets', express.static(path.join(ROOT_DIR, 'assets')));
 
@@ -698,6 +705,10 @@ app.post('/api/downloads/add', async (req, res) => {
         let plan = null;
         if (item.planId) {
           plan = loadPlanForDispatch(item.planId);
+          if (item.customOutputDir !== undefined) plan.customOutputDir = item.customOutputDir;
+          if (item.selectedFiles !== undefined) plan.selectedFiles = item.selectedFiles;
+          if (item.autoExtract !== undefined) plan.autoExtract = !!item.autoExtract;
+          if (item.deleteArchiveAfterExtract !== undefined) plan.deleteArchiveAfterExtract = !!item.deleteArchiveAfterExtract;
         } else {
           // Legacy client without plan support: accept but re-derive from item
           plan = {

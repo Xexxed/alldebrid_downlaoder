@@ -70,6 +70,21 @@ async function apiFetch(url, options = {}) {
     showTokenModal();
     throw new Error('Unauthorized: valid access token required');
   }
+
+  if (res && typeof res.text === 'function') {
+    res.json = async () => {
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        if (!res.ok) {
+          throw new Error(`Server error HTTP ${res.status}: ${res.statusText || 'Request failed'}`);
+        }
+        throw new Error('Invalid JSON response received from server');
+      }
+    };
+  }
+
   return res;
 }
 
@@ -1437,12 +1452,13 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
   elements.confirmReviewDownloadBtn.textContent = 'DISPATCHING PIPELINE...';
 
   const itemsPayload = state.reviewPreviews.map((p) => ({
+    planId: p.planId || undefined,
     type: p.type,
     magnetId: p.magnetId,
     url: p.url,
     name: p.name,
-    filesTree: p.filesTree,
-    files: p.flattenedFiles,
+    filesTree: p.planId ? undefined : p.filesTree,
+    files: p.planId ? undefined : p.flattenedFiles,
     customOutputDir: chosenOutputDir,
     selectedFiles: selectedList.length > 0 ? selectedList : null,
     autoExtract,
@@ -1458,6 +1474,9 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
 
     const data = await res.json();
     if (data.error) throw new Error(data.error);
+    if (data.addedCount === 0 && data.errors?.length > 0) {
+      throw new Error(data.errors.join('; '));
+    }
 
     showToast(`Dispatched ${data.addedCount} task(s) into pipeline!`, 'success');
     closeDownloadReview();
