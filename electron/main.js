@@ -160,15 +160,24 @@ function updateTrayMenu() {
   if (!tray) return;
 
   const tasks = engine ? engine.getAllTasks() : [];
-  const activeCount = tasks.filter((t) => t.status === 'downloading' || t.status === 'extracting').length;
+  const downloading = tasks.filter((t) => t.status === 'downloading');
+  const extracting = tasks.filter((t) => t.status === 'extracting' || t.isExtracting);
+  const activeCount = downloading.length + extracting.length;
   const totalSpeed = engine ? engine.totalSpeed || 0 : 0;
   const speedText = totalSpeed > 0 ? `${formatBytes(totalSpeed)}/s` : 'Idle';
 
-  const statusLabel = activeCount > 0
-    ? `Active: ${activeCount} (${speedText})`
-    : `Status: Idle`;
+  let statusLabel = 'Status: Idle';
+  if (activeCount > 0) {
+    const parts = [];
+    if (downloading.length > 0) parts.push(`Downloading: ${downloading.length} (${speedText})`);
+    if (extracting.length > 0) parts.push(`Extracting: ${extracting.length}`);
+    statusLabel = parts.join(' | ');
+  }
 
   tray.setToolTip(`AllDebrid Downloader — ${statusLabel}`);
+
+  const hasDownloading = downloading.length > 0;
+  const hasPaused = tasks.some((t) => t.status === 'paused');
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -205,6 +214,27 @@ function updateTrayMenu() {
         }
       },
     },
+    ...(hasDownloading || hasPaused ? [{ type: 'separator' }] : []),
+    ...(hasDownloading ? [{
+      label: 'Pause All Active Downloads',
+      click: () => {
+        if (engine) {
+          for (const task of downloading) {
+            engine.pauseTask(task.id);
+          }
+        }
+      },
+    }] : []),
+    ...(hasPaused ? [{
+      label: 'Resume All Paused Downloads',
+      click: () => {
+        if (engine) {
+          for (const task of tasks.filter((t) => t.status === 'paused')) {
+            engine.resumeTask(task.id);
+          }
+        }
+      },
+    }] : []),
     { type: 'separator' },
     {
       label: 'Quit AllDebrid',
@@ -330,9 +360,21 @@ function setupEngineListeners() {
   onEngine('taskCompleted', (task) => {
     updateTrayMenu();
     if (Notification.isSupported()) {
+      const sizeStr = formatBytes(task.totalSize || task.size || 0);
+      let title = '✅ Download Completed';
+      let body = `${task.name}\nSize: ${sizeStr}`;
+
+      if (task.extracted) {
+        title = '✅ Download & Extracted';
+        body = `${task.name}\nSize: ${sizeStr}\nArchive unpacked successfully`;
+      } else if (task.extractionStatus === 'error') {
+        title = '⚠️ Download Completed (Extraction Error)';
+        body = `${task.name}\nSize: ${sizeStr}\nExtraction issue: ${task.extractionError || 'Failed to extract'}`;
+      }
+
       const notif = new Notification({
-        title: '✅ Download Completed',
-        body: `${task.name}\nSize: ${formatBytes(task.size)}`,
+        title,
+        body,
         icon: getAppIcon(),
       });
       notif.on('click', () => {
@@ -375,6 +417,7 @@ function setupEngineListeners() {
   });
 
   onEngine('taskAdded', () => updateTrayMenu());
+  onEngine('taskUpdated', () => updateTrayMenu());
   onEngine('taskDeleted', () => updateTrayMenu());
 }
 
