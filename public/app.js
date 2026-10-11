@@ -303,6 +303,16 @@ function formatEta(seconds) {
   return `${hours}h ${mins}m`;
 }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getFileIconSvg(filename) {
   const ext = (filename.split('.').pop() || '').toLowerCase();
   const videoExts = ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'ts'];
@@ -641,10 +651,11 @@ function createTaskCardHtml(task) {
               <span class="telemetry-badge">P:${priorityLabels[currentPriority]}</span>
               <span class="telemetry-badge">${task.files?.length || task.fileCount || 1} FILES</span>
               <span class="telemetry-badge">${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}</span>
-              ${task.autoExtract && !task.extracted ? `<span class="telemetry-badge">AUTO-EXTRACTION UNAVAILABLE</span>` : ''}
+              ${task.autoExtract && !task.extracted && !isExtracting && !task.extractionError && !isCompleted ? `<span class="telemetry-badge" title="Auto-extraction enabled: archives will be extracted automatically upon completion">AUTO-EXTRACT</span>` : ''}
+              ${isExtracting ? `<span class="telemetry-badge" style="color:var(--accent-amber);border-color:rgba(255,180,0,0.4)">EXTRACTING ARCHIVE...</span>` : ''}
               ${task.extracted ? `<span class="telemetry-badge" style="color:var(--accent-success);border-color:rgba(0,255,102,0.4)">✓ EXTRACTED</span>` : ''}
-              ${task.extractionError ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)">EXTRACTION: ${task.extractionError}</span>` : ''}
-              ${task.error ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)">${task.error}</span>` : ''}
+              ${task.extractionError ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)" title="${escapeHtml(task.extractionError)}">EXTRACTION: ${escapeHtml(task.extractionError.length > 28 ? task.extractionError.slice(0, 25) + '...' : task.extractionError)}</span>` : ''}
+              ${task.error ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)" title="${escapeHtml(task.error)}">${escapeHtml(task.error.length > 35 ? task.error.slice(0, 32) + '...' : task.error)}</span>` : ''}
             </div>
           </div>
         </div>
