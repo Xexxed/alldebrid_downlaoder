@@ -12,7 +12,7 @@ import path from 'path';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { extractTaskArchives, isArchiveFile } from '../server/extractor.js';
+import { extractTaskArchives, isArchiveFile, discoverAvailableTools } from '../server/extractor.js';
 
 const emptyZip = Buffer.from('PK\x05\x06' + '\0'.repeat(18));
 
@@ -260,6 +260,108 @@ test('archive escaping the output directory is refused before any process runs',
     const result = await extractTaskArchives(task, true);
     assert.deepEqual(result, { message: 'No archives to extract', extracted: [], deleted: [] });
     assert.equal(fs.existsSync(outsidePath), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('discoverAvailableTools identifies available platform extractors', () => {
+  const tools = discoverAvailableTools();
+  assert.ok(tools.tar, 'tar fallback must be identified');
+  if (process.platform === 'win32') {
+    // WinRAR is installed in standard path on this environment
+    if (fs.existsSync('C:\\Program Files\\WinRAR\\UnRAR.exe')) {
+      assert.ok(tools.unrar, 'unrar should be detected in standard WinRAR path');
+    }
+  }
+});
+
+test('incomplete multi-part archive rejects extraction before running child processes', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adc-extract-incomplete-'));
+  try {
+    const outputDir = path.join(root, 'task-output');
+    fs.mkdirSync(outputDir);
+    const part1 = path.join(outputDir, 'archive.part1.rar');
+    const part2 = path.join(outputDir, 'archive.part2.rar');
+    fs.writeFileSync(part1, Buffer.from('part 1 bytes'));
+    fs.writeFileSync(part2, Buffer.from('part 2 bytes'));
+
+    // Task specifies 2 parts, but only part 1 has completed status and size_verified
+    const task = makeTask('incomplete-task', outputDir, [
+      makeVerifiedFile('archive.part1.rar', part1, fs.statSync(part1).size),
+      {
+        id: 'part2-id',
+        name: 'archive.part2.rar',
+        fullLocalPath: part2,
+        size: fs.statSync(part2).size,
+        status: 'pending', // not completed
+        ownership: 'owned',
+        verification: 'unknown',
+      },
+    ]);
+
+    await assert.rejects(
+      extractTaskArchives(task, false),
+      (err) => {
+        assert.match(err.message, /Incomplete archive set/);
+        return true;
+      },
+      'must reject incomplete volume set',
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('multi-part rar extracts via UnRAR/7z when available and publishes cleanly', async () => {
+  const tools = discoverAvailableTools();
+  if (!tools.unrar && !tools.sevenZip) {
+    // Skip if neither WinRAR nor 7-Zip is installed in test environment
+    return;
+  }
+
+  // Check if Rar.exe is available to build a fixture
+  const rarCreator = [
+    'C:\\Program Files\\WinRAR\\Rar.exe',
+    'C:\\Program Files (x86)\\WinRAR\\Rar.exe',
+  ].find((p) => fs.existsSync(p));
+
+  if (!rarCreator) return;
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adc-extract-multipart-'));
+  try {
+    const outputDir = path.join(root, 'task-output');
+    fs.mkdirSync(outputDir);
+
+    // Create a payload file to compress into parts
+    const fixtureDir = fs.mkdtempSync(path.join(root, 'fix-'));
+    const payloadFile = path.join(fixtureDir, 'secret_payload.txt');
+    fs.writeFileSync(payloadFile, 'A'.repeat(5000));
+
+    // Create split volume archive using Rar.exe with 500 byte uncompressed volumes
+    execFileSync(rarCreator, ['a', '-v500b', '-m0', path.join(outputDir, 'multi.rar'), path.basename(payloadFile)], {
+      cwd: fixtureDir,
+    });
+
+    const createdParts = fs.readdirSync(outputDir).filter((name) => /\.part\d+\.rar$/i.test(name));
+    assert.ok(createdParts.length >= 2, `Expected at least 2 part files, got ${createdParts.length}`);
+
+    const taskFiles = createdParts.map((name) => {
+      const fullPath = path.join(outputDir, name);
+      return makeVerifiedFile(name, fullPath, fs.statSync(fullPath).size);
+    });
+
+    const task = makeTask('multipart-test', outputDir, taskFiles);
+    const result = await extractTaskArchives(task, true);
+
+    const extractedTarget = path.join(outputDir, 'secret_payload.txt');
+    assert.ok(fs.existsSync(extractedTarget), 'Extracted payload file must exist');
+    assert.equal(fs.readFileSync(extractedTarget, 'utf8'), 'A'.repeat(5000));
+    assert.ok(result.extracted.length >= 1);
+    assert.equal(result.deleted.length, createdParts.length, 'All part files must be cleaned up when deleteParts is true');
+    for (const part of createdParts) {
+      assert.ok(!fs.existsSync(path.join(outputDir, part)), `Part file ${part} must be deleted`);
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

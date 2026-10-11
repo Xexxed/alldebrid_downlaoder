@@ -934,8 +934,13 @@ export class DownloadEngine extends EventEmitter {
       try {
         const result = await extraction;
         task.isExtracting = false;
-        task.extracted = true;
-        task.extractionStatus = 'completed';
+        if (result.extracted && result.extracted.length > 0) {
+          task.extracted = true;
+          task.extractionStatus = 'completed';
+        } else {
+          task.extracted = false;
+          task.extractionStatus = null;
+        }
         task.extractionMessage = result.message;
         task.status = 'completed';
         task.completedAt = new Date().toISOString();
@@ -995,8 +1000,13 @@ export class DownloadEngine extends EventEmitter {
     try {
       const result = await this.runExtraction(task, task.deleteArchiveAfterExtract);
       task.isExtracting = false;
-      task.extracted = true;
-      task.extractionStatus = 'completed';
+      if (result.extracted && result.extracted.length > 0) {
+        task.extracted = true;
+        task.extractionStatus = 'completed';
+      } else {
+        task.extracted = false;
+        task.extractionStatus = null;
+      }
       task.extractionMessage = result.message;
       if (task.status === 'extracting') task.status = 'completed';
       this.emit('taskUpdated', task);

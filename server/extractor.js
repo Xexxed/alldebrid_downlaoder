@@ -177,31 +177,185 @@ export function detectArchiveGroups(filePathsOrObjects, baseDir = '') {
 }
 
 /**
- * Resolve the extraction tool. Multi-volume groups require 7-Zip; bsdtar
- * (Windows tar.exe) handles single-volume zip/tar/7z/rar-v4 reading.
+ * Resolve the extraction tool. Supports unrar/winrar for RAR/multi-part RAR,
+ * 7-Zip for multi-volume and all archive sets, and bsdtar for single-volume sets.
  */
 export function resolveExtractorCommand(toolPath, platform = process.platform) {
   const base = path.basename(toolPath).toLowerCase().replace(/\.exe$/, '');
   if (base === 'tar' || base === 'bsdtar') return 'bsdtar';
   if (base === '7z' || base === '7za' || base === '7zz') return '7z';
+  if (base === 'unrar' || base === 'rar' || base === 'winrar') return 'unrar';
   if (platform === 'win32' && base === 'tar') return 'bsdtar';
   return base;
 }
 
-function findTool(env = process.env) {
-  if (env.SEVEN_ZIP) return { toolPath: env.SEVEN_ZIP, multiVolume: true };
+/**
+ * Discovers available archive extraction tools across environment overrides,
+ * system PATH, and standard platform installation directories (e.g. Windows Program Files).
+ */
+export function discoverAvailableTools(env = process.env) {
+  const isWin = process.platform === 'win32';
   const pathDirs = (env.PATH || env.Path || '').split(path.delimiter).filter(Boolean);
-  const exeNames = process.platform === 'win32' ? ['7z.exe', '7za.exe'] : ['7z', '7za', '7zz'];
-  for (const dir of pathDirs) {
-    for (const name of exeNames) {
-      const candidate = path.join(dir, name);
-      try {
-        fs.accessSync(candidate, fs.constants.X_OK);
-        return { toolPath: candidate, multiVolume: true };
-      } catch {}
+
+  function findInDirs(dirs, filenames) {
+    for (const dir of dirs) {
+      if (!dir) continue;
+      for (const name of filenames) {
+        const candidate = path.join(dir, name);
+        try {
+          if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+            return candidate;
+          }
+        } catch {}
+      }
     }
+    return null;
   }
-  return { toolPath: process.platform === 'win32' ? 'tar' : 'bsdtar', multiVolume: false };
+
+  // 1. 7-Zip (handles all single and multi-volume archives)
+  let sevenZip = null;
+  if (env.SEVEN_ZIP) {
+    try {
+      if (fs.existsSync(env.SEVEN_ZIP)) sevenZip = env.SEVEN_ZIP;
+    } catch {}
+  }
+  if (!sevenZip) {
+    const sevenZipNames = isWin ? ['7z.exe', '7za.exe', '7zz.exe'] : ['7z', '7za', '7zz'];
+    sevenZip = findInDirs(pathDirs, sevenZipNames);
+  }
+  if (!sevenZip && isWin) {
+    const standard7zDirs = [
+      'C:\\Program Files\\7-Zip',
+      'C:\\Program Files (x86)\\7-Zip',
+      env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, 'Programs', '7-Zip') : null,
+      env.ProgramFiles ? path.join(env.ProgramFiles, '7-Zip') : null,
+      env['ProgramFiles(x86)'] ? path.join(env['ProgramFiles(x86)'], '7-Zip') : null,
+    ].filter(Boolean);
+    sevenZip = findInDirs(standard7zDirs, ['7z.exe', '7za.exe', '7zz.exe']);
+  }
+
+  // 2. UnRAR / WinRAR (official RAR5 & multi-part RAR extraction)
+  let unrar = null;
+  if (env.UNRAR_PATH) {
+    try {
+      if (fs.existsSync(env.UNRAR_PATH)) unrar = env.UNRAR_PATH;
+    } catch {}
+  } else if (env.WINRAR_PATH) {
+    try {
+      if (fs.existsSync(env.WINRAR_PATH)) unrar = env.WINRAR_PATH;
+    } catch {}
+  }
+  if (!unrar) {
+    const unrarNames = isWin
+      ? ['UnRAR.exe', 'unrar.exe', 'Rar.exe', 'rar.exe', 'WinRAR.exe', 'winrar.exe']
+      : ['unrar', 'rar'];
+    unrar = findInDirs(pathDirs, unrarNames);
+  }
+  if (!unrar && isWin) {
+    const standardWinRarDirs = [
+      'C:\\Program Files\\WinRAR',
+      'C:\\Program Files (x86)\\WinRAR',
+      env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, 'Programs', 'WinRAR') : null,
+      env.ProgramFiles ? path.join(env.ProgramFiles, 'WinRAR') : null,
+      env['ProgramFiles(x86)'] ? path.join(env['ProgramFiles(x86)'], 'WinRAR') : null,
+    ].filter(Boolean);
+    unrar = findInDirs(standardWinRarDirs, ['UnRAR.exe', 'unrar.exe', 'Rar.exe', 'rar.exe', 'WinRAR.exe', 'winrar.exe']);
+  }
+
+  // 3. tar / bsdtar (standard ZIP/TAR fallback)
+  let tar = null;
+  if (env.TAR_PATH) {
+    try {
+      if (fs.existsSync(env.TAR_PATH)) tar = env.TAR_PATH;
+    } catch {}
+  }
+  if (!tar) {
+    const tarNames = isWin ? ['tar.exe', 'bsdtar.exe'] : ['bsdtar', 'tar'];
+    tar = findInDirs(pathDirs, tarNames);
+  }
+  if (!tar && isWin) {
+    const sys32 = env.SystemRoot ? path.join(env.SystemRoot, 'System32') : 'C:\\Windows\\System32';
+    tar = findInDirs([sys32], ['tar.exe']);
+  }
+  if (!tar) {
+    tar = isWin ? 'tar' : 'bsdtar';
+  }
+
+  return { sevenZip, unrar, tar };
+}
+
+/**
+ * Resolves the appropriate extractor tool for an archive group based on format.
+ */
+export function resolveExtractorForGroup(group, tools) {
+  const isRar =
+    group.type === 'multipart_rar' ||
+    group.type === 'multipart_rar_old' ||
+    (group.type === 'single_archive' && /\.rar$/i.test(group.entryFile || ''));
+  const isMultiVolume =
+    (group.partFiles?.length || 0) > 1 ||
+    group.type === 'multipart_rar' ||
+    group.type === 'multipart_rar_old' ||
+    group.type === 'split_archive';
+
+  if (isRar) {
+    if (tools.unrar) {
+      return { toolType: 'unrar', toolPath: tools.unrar, multiVolume: true };
+    }
+    if (tools.sevenZip) {
+      return { toolType: '7z', toolPath: tools.sevenZip, multiVolume: true };
+    }
+    if (!isMultiVolume && tools.tar) {
+      return { toolType: 'bsdtar', toolPath: tools.tar, multiVolume: false };
+    }
+    throw new ExtractionError(
+      `Multi-volume RAR archive requires WinRAR/UnRAR or 7-Zip (install WinRAR or 7-Zip, or set UNRAR_PATH / SEVEN_ZIP): ${group.baseName}`,
+      'EXTRACTION_TOOL_MISSING',
+    );
+  }
+
+  if (group.type === 'split_archive') {
+    if (tools.sevenZip) {
+      return { toolType: '7z', toolPath: tools.sevenZip, multiVolume: true };
+    }
+    throw new ExtractionError(
+      `Multi-volume split archive requires 7-Zip (set SEVEN_ZIP or install 7z): ${group.baseName}`,
+      'EXTRACTION_TOOL_MISSING',
+    );
+  }
+
+  // Single volume archive (.7z, .zip, .tar, .gz, etc.)
+  if (/\.7z$/i.test(group.entryFile || '')) {
+    if (tools.sevenZip) return { toolType: '7z', toolPath: tools.sevenZip, multiVolume: true };
+    return { toolType: 'bsdtar', toolPath: tools.tar, multiVolume: false };
+  }
+
+  if (tools.sevenZip) return { toolType: '7z', toolPath: tools.sevenZip, multiVolume: true };
+  return { toolType: 'bsdtar', toolPath: tools.tar, multiVolume: false };
+}
+
+/**
+ * Builds the command arguments for invoking the specified tool.
+ */
+export function buildExtractorArgs(toolType, toolPath, entryFile, stagingDir) {
+  if (toolType === 'unrar') {
+    const isWinRarGui = /winrar(?:\.exe)?$/i.test(toolPath);
+    const outDir = stagingDir.endsWith(path.sep) ? stagingDir : stagingDir + path.sep;
+    return isWinRarGui
+      ? ['x', '-ibck', '-y', '-o-', entryFile, outDir]
+      : ['x', '-y', '-o-', entryFile, outDir];
+  }
+  if (toolType === '7z') {
+    return ['x', '-y', `-o${stagingDir}`, entryFile];
+  }
+  return ['-xf', entryFile, '-C', stagingDir];
+}
+
+function findTool(env = process.env) {
+  const tools = discoverAvailableTools(env);
+  if (tools.sevenZip) return { toolPath: tools.sevenZip, multiVolume: true };
+  if (tools.unrar) return { toolPath: tools.unrar, multiVolume: true };
+  return { toolPath: tools.tar || (process.platform === 'win32' ? 'tar' : 'bsdtar'), multiVolume: false };
 }
 
 function containedRelative(baseDir, targetPath) {
@@ -213,8 +367,9 @@ function containedRelative(baseDir, targetPath) {
 async function runExtractor(toolPath, args, timeoutMs, { spawnImpl = spawn, env = process.env } = {}) {
   const child = spawnImpl(toolPath, args, { windowsHide: true, env });
   let stderr = '';
+  let stdout = '';
   child.stderr?.on('data', (chunk) => { stderr += chunk; });
-  child.stdout?.resume();
+  child.stdout?.on('data', (chunk) => { stdout += chunk; });
   let timer;
   const timedOut = new Error(`Extractor timed out after ${timeoutMs}ms`);
   const timeout = new Promise((resolve) => {
@@ -241,7 +396,7 @@ async function runExtractor(toolPath, args, timeoutMs, { spawnImpl = spawn, env 
     }
     const { code, signal } = raced;
     if (code !== 0 || signal) {
-      const detail = stderr.trim().split('\n').filter(Boolean).slice(-3).join(' | ');
+      const detail = (stderr || stdout).trim().split('\n').filter(Boolean).slice(-3).join(' | ');
       throw new ExtractionError(
         `Extractor "${path.basename(String(toolPath))}" failed (exit=${code ?? signal})${detail ? `: ${detail}` : ''}`,
       );
@@ -397,17 +552,27 @@ export async function extractTaskArchives(task, deleteParts = false, options = {
     return { message: 'No archives to extract', extracted: [], deleted: [] };
   }
 
-  const { toolPath, multiVolume } = findTool(options.env || process.env);
-  // Multi-volume = a group with more than one member (e.g. .rar + .rNN, or
-  // .7z.001 + .7z.002). A standalone .rar is single-volume and bsdtar reads it.
-  const unsupported = groups.filter((group) => (group.partFiles?.length || 0) > 1 && !multiVolume);
-  if (unsupported.length > 0) {
-    throw new ExtractionError(
-      `Multi-volume archive(s) require 7-Zip (set SEVEN_ZIP or install 7z): ` +
-      unsupported.map((group) => group.baseName).join(', '),
-      'EXTRACTION_TOOL_MISSING',
-    );
+  // Completeness gate: if an archive group has constituent part files defined
+  // in the task that are not yet eligible (incomplete or failed), refuse to extract
+  // the partial set so we never corrupt data or delete parts prematurely.
+  const allTaskGroups = detectArchiveGroups(task.files || [], outputDir);
+  const taskGroupMap = new Map();
+  for (const tg of allTaskGroups) {
+    taskGroupMap.set(`${tg.type}|${tg.baseName.toLowerCase()}`, tg);
   }
+
+  for (const group of groups) {
+    const key = `${group.type}|${group.baseName.toLowerCase()}`;
+    const fullGroup = taskGroupMap.get(key);
+    if (fullGroup && fullGroup.partFiles.length > group.partFiles.length) {
+      throw new ExtractionError(
+        `Incomplete archive set for "${group.baseName}": ${group.partFiles.length} of ${fullGroup.partFiles.length} parts ready`,
+        'EXTRACTION_INCOMPLETE_SET',
+      );
+    }
+  }
+
+  const tools = discoverAvailableTools(options.env || process.env);
 
   fs.mkdirSync(outputDir, { recursive: true });
   let outputDirReal;
@@ -418,15 +583,13 @@ export async function extractTaskArchives(task, deleteParts = false, options = {
   }
   const stagingDir = fs.mkdtempSync(path.join(outputDir, `${STAGING_DIR_NAME}-`));
 
-  const is7z = resolveExtractorCommand(toolPath) === '7z';
   const published = [];
   let anyStaged = false;
   const deleted = [];
   try {
     for (const group of groups) {
-      const args = is7z
-        ? ['x', '-y', `-o${stagingDir}`, group.entryFile]
-        : ['-xf', group.entryFile, '-C', stagingDir];
+      const { toolType, toolPath } = resolveExtractorForGroup(group, tools);
+      const args = buildExtractorArgs(toolType, toolPath, group.entryFile, stagingDir);
       await runExtractor(toolPath, args, timeoutMs, options);
       const { published: moved, staged } = publishStagedFiles(stagingDir, outputDir, outputDirReal);
       anyStaged = anyStaged || staged > 0;
