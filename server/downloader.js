@@ -13,6 +13,26 @@ import { planFileInDestination, assertContained, DestinationError } from './plan
 import { DiskPolicy } from './planning/disk-policy.js';
 
 /**
+ * Size drift tolerance: AllDebrid metadata sizes can differ from the served
+ * payload by a minimal number of bytes. Differences within this window are
+ * treated as a complete transfer instead of a fatal size mismatch, so minimal
+ * byte differences never block extraction. Larger differences stay fatal, and
+ * the window can never approach the payload size itself (an empty file is
+ * never accepted for a non-empty expectation).
+ */
+const SIZE_DRIFT_MIN_BYTES = 128;
+const SIZE_DRIFT_MAX_BYTES = 1024 * 1024;
+const SIZE_DRIFT_RATIO = 0.0002;
+const SIZE_DRIFT_MAX_FRACTION = 0.1;
+
+function sizeDriftTolerance(expectedBytes) {
+  const expected = Number(expectedBytes) || 0;
+  if (expected <= 0) return 0;
+  const scaled = Math.max(SIZE_DRIFT_MIN_BYTES, Math.floor(expected * SIZE_DRIFT_RATIO));
+  return Math.min(SIZE_DRIFT_MAX_BYTES, scaled, Math.floor(expected * SIZE_DRIFT_MAX_FRACTION));
+}
+
+/**
  * Shared token-bucket bandwidth limiter.
  * limit = bytes per second, 0 = unlimited. FIFO-fair across all streams.
  */
@@ -722,10 +742,11 @@ export class DownloadEngine extends EventEmitter {
     try {
       if (fs.existsSync(file.fullLocalPath)) {
         const stat = fs.statSync(file.fullLocalPath);
-        // Exact length only: an oversized on-disk file is a conflict, never
-        // silently accepted as completed (plan invariant 8).
-        if (file.size > 0 && stat.size === file.size) {
-          file.downloaded = file.size;
+        // Lengths within the drift tolerance count as complete; a beyond-tolerance
+        // oversized on-disk file is a conflict, never silently accepted
+        // as completed (plan invariant 8).
+        if (file.size > 0 && Math.abs(stat.size - file.size) <= sizeDriftTolerance(file.size)) {
+          file.downloaded = stat.size;
           file.progress = 100;
           file.status = 'completed';
           file.verification = file.verification === 'unknown' ? 'size_verified' : file.verification;
@@ -1079,9 +1100,9 @@ export class DownloadEngine extends EventEmitter {
       let startOffset = 0;
       if (fs.existsSync(file.fullLocalPath)) {
         const stat = await fs.promises.stat(file.fullLocalPath);
-        if (file.size > 0 && stat.size === file.size) {
-          // File already exactly complete on disk!
-          file.downloaded = file.size;
+        if (file.size > 0 && Math.abs(stat.size - file.size) <= sizeDriftTolerance(file.size)) {
+          // File already complete on disk (within drift tolerance)!
+          file.downloaded = stat.size;
           file.progress = 100;
           file.status = 'completed';
           file.verification = file.verification === 'unknown' ? 'size_verified' : file.verification;
@@ -1089,7 +1110,7 @@ export class DownloadEngine extends EventEmitter {
           this.processQueue();
           return;
         }
-        if (file.size > 0 && stat.size > file.size) {
+        if (file.size > 0 && stat.size > file.size + sizeDriftTolerance(file.size)) {
           throw new Error(`Oversized existing file: got ${stat.size} of ${file.size} bytes`);
         }
         startOffset = stat.size;
@@ -1123,7 +1144,7 @@ export class DownloadEngine extends EventEmitter {
         // Range Not Satisfiable: reconcile against authoritative remote size.
         const lenHeader = response.headers.get('content-range');
         const total = lenHeader ? Number(/^bytes \*\/(\d+)$/.exec(lenHeader)?.[1]) : NaN;
-        if (file.size > 0 && Number.isFinite(total) && total === file.size) {
+        if (file.size > 0 && Number.isFinite(total) && Math.abs(total - file.size) <= sizeDriftTolerance(file.size)) {
           // Remote size unchanged: local partial already complete (server is
           // strict about the open-ended range); validate exact length below.
           return this.finalizeDownloadedFile(task, file);
@@ -1151,7 +1172,7 @@ export class DownloadEngine extends EventEmitter {
         if (!contentRange || Number(contentRange[1]) !== startOffset) {
           throw new Error(`Invalid Content-Range for resume: ${response.headers.get('content-range') || 'missing'}`);
         }
-        if (contentRange[3] !== '*' && file.size > 0 && Number(contentRange[3]) !== file.size) {
+        if (contentRange[3] !== '*' && file.size > 0 && Math.abs(Number(contentRange[3]) - file.size) > sizeDriftTolerance(file.size)) {
           throw new Error(`Remote size changed: expected ${file.size}, got ${contentRange[3]}`);
         }
       } else if (response.status !== 200 && response.status !== 206) {
@@ -1266,21 +1287,29 @@ export class DownloadEngine extends EventEmitter {
   }
 
   /**
-   * Validates exact on-disk length after EOF and publishes completion.
-   * Unknown-length downloads end as downloaded_unverified, never size-verified.
+   * Validates on-disk length after EOF and publishes completion.
+   * Minimal byte differences against the expected size (metadata drift) are
+   * tolerated so they never block verification or archive extraction;
+   * beyond-tolerance mismatches stay fatal. Unknown-length downloads end as
+   * downloaded_unverified, never size-verified.
    */
   async finalizeDownloadedFile(task, file) {
     const stat = await fs.promises.stat(file.fullLocalPath);
     if (file.size > 0) {
-      if (stat.size < file.size) {
+      const tolerance = sizeDriftTolerance(file.size);
+      const drift = stat.size - file.size;
+      if (drift < -tolerance) {
         throw new Error(`Truncated response: got ${stat.size} of ${file.size} bytes`);
       }
-      if (stat.size > file.size) {
+      if (drift > tolerance) {
         file.status = 'error';
         file.error = `Oversized response: got ${stat.size} of ${file.size} bytes`;
         file.retryAt = null;
         this._persist();
         return;
+      }
+      if (drift !== 0) {
+        console.warn(`[Engine] ${file.name}: ignoring ${drift > 0 ? '+' : ''}${drift} byte size difference (disk ${stat.size}, expected ${file.size})`);
       }
       file.downloaded = stat.size;
       file.verification = 'size_verified';
