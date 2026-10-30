@@ -79,7 +79,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 680,
     title: 'AllDebrid Downloader',
-    backgroundColor: '#090a0f',
+    backgroundColor: '#0b0e13',
     icon: appIcon,
     autoHideMenuBar: true,
     show: false, // Show when ready to prevent visual flicker
@@ -361,14 +361,14 @@ function setupEngineListeners() {
     updateTrayMenu();
     if (Notification.isSupported()) {
       const sizeStr = formatBytes(task.totalSize || task.size || 0);
-      let title = '✅ Download Completed';
+      let title = 'Download completed';
       let body = `${task.name}\nSize: ${sizeStr}`;
 
       if (task.extracted) {
-        title = '✅ Download & Extracted';
+        title = 'Downloaded and extracted';
         body = `${task.name}\nSize: ${sizeStr}\nArchive unpacked successfully`;
       } else if (task.extractionStatus === 'error') {
-        title = '⚠️ Download Completed (Extraction Error)';
+        title = 'Downloaded, extraction issue';
         body = `${task.name}\nSize: ${sizeStr}\nExtraction issue: ${task.extractionError || 'Failed to extract'}`;
       }
 
@@ -391,7 +391,7 @@ function setupEngineListeners() {
     updateTrayMenu();
     if (Notification.isSupported()) {
       const notif = new Notification({
-        title: '❌ Download Error',
+        title: 'Download error',
         body: `${task.name}: ${task.error || 'Unknown error occurred'}`,
         icon: getAppIcon(),
       });
@@ -402,7 +402,7 @@ function setupEngineListeners() {
   onEngine('diskWarning', (info) => {
     if (Notification.isSupported()) {
       const notif = new Notification({
-        title: '⚠️ Low Disk Space',
+        title: 'Low disk space',
         body: info?.message || 'Downloads were paused because the destination drive is running low on space.',
         icon: getAppIcon(),
       });

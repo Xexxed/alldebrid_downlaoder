@@ -255,22 +255,22 @@ const elements = {
 // ============================================================
 
 const ICONS = {
-  video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>`,
-  audio: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
-  archive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
-  document: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
-  image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
-  folder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
-  cloud: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>`,
-  link: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
-  check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`,
-  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-  info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
-  pause: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`,
-  play: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
-  retry: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
-  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
-  drive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>`,
+  video: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>`,
+  audio: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+  archive: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
+  document: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+  image: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+  folder: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+  cloud: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>`,
+  link: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+  check: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`,
+  alert: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  info: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  pause: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`,
+  play: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
+  retry: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+  trash: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  drive: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>`,
 };
 
 // ============================================================
@@ -333,13 +333,13 @@ function showToast(message, type = 'info') {
   const toast = document.createElement('div');
   toast.className = `hpc-toast ${type}`;
   const iconSvg = type === 'success' ? ICONS.check : type === 'error' ? ICONS.alert : ICONS.info;
-  toast.innerHTML = `<div class="toast-icon">${iconSvg}</div><span class="mono">${message}</span>`;
+  toast.innerHTML = `<div class="toast-icon">${iconSvg}</div><span>${message}</span>`;
   elements.toastContainer.appendChild(toast);
 
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(100%)';
-    toast.style.transition = 'all 0.25s ease-out';
+    toast.style.transition = 'opacity 0.25s ease-out, transform 0.25s ease-out';
     setTimeout(() => toast.remove(), 260);
   }, 4200);
 }
@@ -372,8 +372,7 @@ async function connectWebSocket() {
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    elements.wsStatus.innerHTML = '<span class="pulse-dot"></span><span class="socket-text mono">SOCKET LIVE</span>';
-    elements.wsStatus.style.color = 'var(--accent-success)';
+    elements.wsStatus.innerHTML = '<span class="socket-text text-success">Connected</span>';
     if (reconnectTimer) clearTimeout(reconnectTimer);
   };
 
@@ -387,8 +386,7 @@ async function connectWebSocket() {
   };
 
   ws.onclose = () => {
-    elements.wsStatus.innerHTML = '<span class="pulse-dot" style="background:var(--accent-primary);box-shadow:0 0 8px var(--accent-primary);"></span><span class="socket-text mono">OFFLINE</span>';
-    elements.wsStatus.style.color = 'var(--accent-primary)';
+    elements.wsStatus.innerHTML = '<span class="socket-text text-warning">Reconnecting</span>';
     scheduleReconnect();
   };
 
@@ -446,23 +444,23 @@ async function fetchStatus() {
     if (data.userInfo) {
       const u = data.userInfo;
       const isPrem = u.isPremium;
-      elements.userStatusLabel.textContent = isPrem ? 'PREMIUM NODE' : 'STANDARD NODE';
+      elements.userStatusLabel.textContent = isPrem ? 'Premium account' : 'Standard account';
       elements.userStatusValue.textContent = `${u.username || 'User'}`;
-      elements.userPill.style.borderColor = isPrem ? 'rgba(0, 255, 102, 0.4)' : 'rgba(255, 176, 32, 0.4)';
+      elements.userPill.dataset.state = isPrem ? 'premium' : 'warning';
     } else if (data.hasApiKey && data.userError) {
-      elements.userStatusLabel.textContent = 'NODE ERROR';
-      elements.userStatusValue.textContent = 'AUTH FAILED';
-      elements.userPill.style.borderColor = 'rgba(237, 28, 36, 0.4)';
+      elements.userStatusLabel.textContent = 'Account';
+      elements.userStatusValue.textContent = 'Sign-in failed';
+      elements.userPill.dataset.state = 'error';
     } else {
-      elements.userStatusLabel.textContent = 'API CREDENTIAL';
-      elements.userStatusValue.textContent = 'NOT CONFIGURED';
-      elements.userPill.style.borderColor = 'rgba(255, 176, 32, 0.4)';
+      elements.userStatusLabel.textContent = 'Account';
+      elements.userStatusValue.textContent = 'API key not set';
+      elements.userPill.dataset.state = 'warning';
     }
 
     // Populate settings form
     elements.downloadDirInput.value = data.downloadDir || '';
     elements.maxConcurrentRange.value = data.maxConcurrent || 3;
-    elements.maxConcurrentVal.textContent = `${data.maxConcurrent || 3} WORKERS`;
+    elements.maxConcurrentVal.textContent = `${data.maxConcurrent || 3} workers`;
 
     // Fetch extended settings (Jackett, limits, schedule)
     const setRes = await apiFetch('/api/settings');
@@ -487,8 +485,8 @@ async function fetchStatus() {
       syncScheduleFieldsState();
     }
     if (elements.authTokenMasked) {
-      elements.authTokenMasked.textContent = setData.authTokenMasked || 'NOT SET';
-      elements.authTokenInput.placeholder = setData.hasAuthToken ? `Current: ${setData.authTokenMasked}` : 'Set an access token...';
+      elements.authTokenMasked.textContent = setData.authTokenMasked || 'Not set';
+      elements.authTokenInput.placeholder = setData.hasAuthToken ? `Current: ${setData.authTokenMasked}` : 'Set an access token';
     }
 
     // Fetch usage stats
@@ -520,7 +518,7 @@ async function fetchStats() {
 
 async function fetchCloudMagnets() {
   elements.cloudTorrentsList.innerHTML = `
-    <div class="shimmer-card">
+    <div class="shimmer-block">
       <div class="shimmer-line header"></div>
       <div class="shimmer-line sub"></div>
       <div class="shimmer-line bar"></div>
@@ -537,12 +535,12 @@ async function fetchCloudMagnets() {
   } catch (err) {
     elements.cloudTorrentsList.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon-box" style="color:var(--accent-primary);">
+        <div class="empty-icon-box text-danger">
           ${ICONS.alert}
         </div>
-        <h3>CLOUD SYNC FAILED</h3>
+        <h2>Cloud sync failed</h2>
         <p>${err.message}</p>
-        <button class="btn btn-secondary" onclick="fetchCloudMagnets()">RETRY QUERY</button>
+        <button class="btn btn-secondary" onclick="fetchCloudMagnets()">Try again</button>
       </div>
     `;
   }
@@ -565,8 +563,8 @@ function updateGlobalStats() {
 
   elements.activeCount.textContent = activeCount;
   elements.completedCount.textContent = completedCount;
-  elements.activeStatsText.textContent = `${activeCount} TASKS IN PIPELINE`;
-  elements.completedStatsText.textContent = `${completedCount} COMPLETED JOBS`;
+  elements.activeStatsText.textContent = `${activeCount} active`;
+  elements.completedStatsText.textContent = `${completedCount} completed`;
 }
 
 function renderTasks() {
@@ -611,34 +609,46 @@ function createTaskCardHtml(task) {
   const isWaitingCloud = task.status === 'waiting_cloud';
   const isExtracting = task.status === 'extracting' || task.isExtracting;
 
-  let statusText = task.status.toUpperCase().replace(/_/g, ' ');
-  if (isWaitingCloud) statusText = `CLOUD SYNC (${task.cloudProgress || 0}%)`;
-  if (isExtracting) statusText = `EXTRACTING ARCHIVE...`;
+  const statusLabels = {
+    pending: 'Queued',
+    ready_to_download: 'Queued',
+    initializing: 'Preparing',
+    waiting_cloud: 'Waiting for cloud',
+    downloading: 'Downloading',
+    paused: 'Paused',
+    extracting: 'Extracting',
+    completed: 'Completed',
+    error: 'Error',
+    deleted_after_extract: 'Extracted',
+  };
+  let statusText = statusLabels[task.status] || task.status;
+  if (isWaitingCloud) statusText = `Waiting for cloud (${task.cloudProgress || 0}%)`;
+  if (isExtracting) statusText = 'Extracting';
+  if (!isCompleted && !isExtracting && task.retryingCount > 0) statusText = 'Retrying';
 
   const typeIcon = task.type === 'torrent' ? ICONS.folder : task.type === 'folder' ? ICONS.folder : ICONS.link;
 
-  // Auto-retry countdown
   let retryInfo = '';
   if (!isCompleted && task.retryingCount > 0 && task.nextRetryAt) {
     const secsLeft = Math.max(0, Math.ceil((task.nextRetryAt - Date.now()) / 1000));
-    retryInfo = `
-      <div class="metric-item" style="color:var(--accent-amber)">
-        ⟳ AUTO-RETRYING ${task.retryingCount} FILE(S) IN ${secsLeft}s
-      </div>
-    `;
+    const fileWord = task.retryingCount === 1 ? 'file' : 'files';
+    retryInfo = `<div class="metric-item text-warning">Retrying ${task.retryingCount} ${fileWord} in ${secsLeft}s</div>`;
   }
 
-  const priorityLabels = { 0: 'HIGH', 1: 'NORM', 2: 'LOW' };
+  const priorityLabels = { 0: 'High', 1: 'Normal', 2: 'Low' };
   const currentPriority = task.priority ?? 1;
   const priorityButtons = !isCompleted
     ? `
       <div class="priority-controls" title="Queue priority">
         ${[0, 1, 2].map((p) => `
-          <button class="btn-priority ${currentPriority === p ? 'active p-' + p : ''}" onclick="setTaskPriority('${task.id}', ${p})" title="Set ${priorityLabels[p]} priority">${priorityLabels[p][0]}</button>
+          <button class="btn-priority ${currentPriority === p ? 'active' : ''}" onclick="setTaskPriority('${task.id}', ${p})" title="${priorityLabels[p]} priority">${priorityLabels[p]}</button>
         `).join('')}
       </div>
     `
     : '';
+
+  const fileCount = task.files?.length || task.fileCount || 1;
+  const errorText = task.error ? (task.error.length > 80 ? `${task.error.slice(0, 77)}…` : task.error) : '';
 
   return `
     <div class="task-card" data-task-id="${task.id}">
@@ -646,57 +656,50 @@ function createTaskCardHtml(task) {
         <div class="task-title-area">
           <div class="task-type-badge">${typeIcon}</div>
           <div>
-            <div class="task-name" title="${task.name}">${task.name}</div>
-            <div class="task-meta-pills" style="margin-top: 6px;">
-              <span class="telemetry-badge">P:${priorityLabels[currentPriority]}</span>
-              <span class="telemetry-badge">${task.files?.length || task.fileCount || 1} FILES</span>
-              <span class="telemetry-badge">${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}</span>
-              ${task.autoExtract && !task.extracted && !isExtracting && !task.extractionError && !isCompleted ? `<span class="telemetry-badge" title="Auto-extraction enabled: archives will be extracted automatically upon completion">AUTO-EXTRACT</span>` : ''}
-              ${isExtracting ? `<span class="telemetry-badge" style="color:var(--accent-amber);border-color:rgba(255,180,0,0.4)">EXTRACTING ARCHIVE...</span>` : ''}
-              ${task.extracted ? `<span class="telemetry-badge" style="color:var(--accent-success);border-color:rgba(0,255,102,0.4)">✓ EXTRACTED</span>` : ''}
-              ${task.extractionError ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)" title="${escapeHtml(task.extractionError)}">EXTRACTION: ${escapeHtml(task.extractionError.length > 28 ? task.extractionError.slice(0, 25) + '...' : task.extractionError)}</span>` : ''}
-              ${task.error ? `<span class="telemetry-badge" style="color:var(--accent-primary);border-color:rgba(237,28,36,0.4)" title="${escapeHtml(task.error)}">${escapeHtml(task.error.length > 35 ? task.error.slice(0, 32) + '...' : task.error)}</span>` : ''}
+            <div class="task-name" title="${escapeHtml(task.name)}">${escapeHtml(task.name)}</div>
+            <div class="task-meta-pills">
+              <span class="telemetry-badge">${priorityLabels[currentPriority]} priority</span>
+              <span class="telemetry-badge">${fileCount} ${fileCount === 1 ? 'file' : 'files'}</span>
+              <span class="telemetry-badge">${formatBytes(task.downloadedSize)} of ${formatBytes(task.totalSize)}</span>
+              ${task.autoExtract && !task.extracted && !isExtracting && !task.extractionError && !isCompleted ? `<span class="telemetry-badge badge-accent" title="Archives are extracted automatically when the download completes">Auto-extract</span>` : ''}
+              ${isExtracting ? `<span class="telemetry-badge badge-warning">Extracting</span>` : ''}
+              ${task.extracted ? `<span class="telemetry-badge badge-success">Extracted</span>` : ''}
+              ${task.extractionError ? `<span class="telemetry-badge badge-danger" title="${escapeHtml(task.extractionError)}">Extraction failed</span>` : ''}
+              ${task.error ? `<span class="telemetry-badge badge-danger" title="${escapeHtml(task.error)}">${escapeHtml(errorText)}</span>` : ''}
             </div>
           </div>
         </div>
-        <div class="status-pill ${task.status}">
-          [ ${statusText} ]
-        </div>
+        <div class="status-pill ${task.status} ${task.retryingCount > 0 && !isCompleted ? 'retrying' : ''}">${statusText}</div>
       </div>
 
       <div class="task-progress-box">
         <div class="hpc-progress-track">
-          <div class="hpc-progress-fill ${isDownloading || isExtracting ? 'active-stream' : ''}" 
-               style="width: ${task.progress || 0}%;"></div>
+          <div class="hpc-progress-fill is-${task.status}" style="width: ${task.progress || 0}%;"></div>
         </div>
         <div class="task-metrics-row">
           <div class="metric-group">
             <div class="metric-item">
-              <span class="metric-label">PROGRESS:</span>
-              <span class="metric-val highlight">${task.progress || 0}%</span>
+              <span class="metric-label">Progress</span>
+              <span class="metric-val">${task.progress || 0}%</span>
             </div>
             ${isDownloading ? `
               <div class="metric-item">
-                <span class="metric-label">SPEED:</span>
-                <span class="metric-val highlight">${formatSpeed(task.speed)}</span>
+                <span class="metric-label">Speed</span>
+                <span class="metric-val">${formatSpeed(task.speed)}</span>
               </div>
             ` : ''}
             ${isDownloading && task.eta > 0 ? `
               <div class="metric-item">
-                <span class="metric-label">ETA:</span>
+                <span class="metric-label">ETA</span>
                 <span class="metric-val">${formatEta(task.eta)}</span>
               </div>
             ` : ''}
             ${retryInfo}
             ${isExtracting ? `
-              <div class="metric-item highlight" style="color:var(--accent-electric)">
-                ⚡ DECOMPRESSING ARCHIVE FILES...
-              </div>
+              <div class="metric-item text-warning">Extracting archive files</div>
             ` : ''}
             ${isCompleted && !isExtracting ? `
-              <div class="metric-item" style="color:var(--accent-success)">
-                ✓ ON-DISK VERIFIED ${task.extracted ? '• EXTRACTED' : ''}
-              </div>
+              <div class="metric-item text-success">Verified on disk</div>
             ` : ''}
           </div>
         </div>
@@ -704,47 +707,47 @@ function createTaskCardHtml(task) {
 
       <div class="task-actions">
         ${priorityButtons}
-        <button class="btn btn-secondary btn-sm" onclick="openFileTreeModal('${task.id}')" title="Inspect file hierarchy">
+        <button class="btn btn-secondary btn-sm" onclick="openFileTreeModal('${task.id}')" title="Inspect the file list">
           <span class="btn-svg">${ICONS.folder}</span>
-          <span>STRUCTURE</span>
+          <span>Files</span>
         </button>
-        
+
         ${isCompleted || task.downloadedSize > 0 ? `
-          <button class="btn btn-secondary btn-sm" onclick="openLocalFolder('${task.id}')" title="Open directory in File Explorer">
+          <button class="btn btn-secondary btn-sm" onclick="openLocalFolder('${task.id}')" title="Open the destination folder">
             <span class="btn-svg">${ICONS.drive}</span>
-            <span>OPEN FOLDER</span>
+            <span>Open folder</span>
           </button>
         ` : ''}
 
         ${isCompleted && !task.extracted && !task.isExtracting ? `
-          <button class="btn btn-secondary btn-sm" onclick="manualExtractTask('${task.id}')" title="Extract archives into the task folder (no-clobber)">
+          <button class="btn btn-secondary btn-sm" onclick="manualExtractTask('${task.id}')" title="Extract archives into the task folder without overwriting existing files">
             <span class="btn-svg">${ICONS.archive}</span>
-            <span>EXTRACT</span>
+            <span>Extract</span>
           </button>
         ` : ''}
 
         ${isDownloading ? `
-          <button class="btn btn-secondary btn-sm" onclick="pauseTask('${task.id}')" title="Pause Download">
+          <button class="btn btn-secondary btn-sm" onclick="pauseTask('${task.id}')" title="Pause download">
             <span class="btn-svg">${ICONS.pause}</span>
-            <span>PAUSE</span>
+            <span>Pause</span>
           </button>
         ` : ''}
 
         ${isPaused ? `
-          <button class="btn btn-secondary btn-sm" onclick="resumeTask('${task.id}')" title="Resume Download">
+          <button class="btn btn-secondary btn-sm" onclick="resumeTask('${task.id}')" title="Resume download">
             <span class="btn-svg">${ICONS.play}</span>
-            <span>RESUME</span>
+            <span>Resume</span>
           </button>
         ` : ''}
 
         ${isError ? `
-          <button class="btn btn-secondary btn-sm" onclick="retryTask('${task.id}')" title="Retry Download">
+          <button class="btn btn-secondary btn-sm" onclick="retryTask('${task.id}')" title="Retry failed files">
             <span class="btn-svg">${ICONS.retry}</span>
-            <span>RETRY</span>
+            <span>Retry</span>
           </button>
         ` : ''}
 
-        <button class="btn btn-danger btn-sm btn-icon" onclick="cancelTask('${task.id}')" title="Cancel & Delete">
+        <button class="btn btn-danger btn-sm btn-icon" onclick="cancelTask('${task.id}')" title="Cancel and delete the task" aria-label="Cancel and delete the task">
           ${ICONS.trash}
         </button>
       </div>
@@ -768,7 +771,8 @@ function sortCloudMagnets(list) {
 function updateCloudUsageBar() {
   const totalBytes = state.cloudMagnets.reduce((acc, m) => acc + (m.size || 0), 0);
   if (elements.cloudUsageText) {
-    elements.cloudUsageText.textContent = `${state.cloudMagnets.length} MAGNETS • ${formatBytes(totalBytes)} IN CLOUD`;
+    const magnetWord = state.cloudMagnets.length === 1 ? 'magnet' : 'magnets';
+    elements.cloudUsageText.textContent = `${state.cloudMagnets.length} ${magnetWord}, ${formatBytes(totalBytes)} in cloud`;
   }
   const pct = Math.min(100, (totalBytes / (50 * 1024 ** 4)) * 100); // indicative scale vs 50 TB
   if (elements.cloudUsageBar) {
@@ -780,7 +784,7 @@ function updateCloudBulkUi() {
   const count = state.cloudSelection.size;
   if (elements.cloudBulkDeleteBtn) {
     elements.cloudBulkDeleteBtn.style.display = count > 0 ? 'inline-flex' : 'none';
-    elements.cloudBulkDeleteBtn.textContent = `DELETE SELECTED (${count})`;
+    elements.cloudBulkDeleteBtn.textContent = `Delete selected (${count})`;
   }
   if (elements.cloudSelectAllCheckbox) {
     elements.cloudSelectAllCheckbox.checked = state.cloudMagnets.length > 0 && count === state.cloudMagnets.length;
@@ -806,8 +810,8 @@ function renderCloudMagnets() {
     elements.cloudTorrentsList.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon-box">${ICONS.cloud}</div>
-        <h3>NO CLOUD STORAGE MAGNETS</h3>
-        <p>Torrents uploaded or cached on your AllDebrid account will display here.</p>
+        <h2>No cloud torrents</h2>
+        <p>Torrents saved or cached on your AllDebrid account appear here.</p>
       </div>
     `;
     return;
@@ -816,32 +820,32 @@ function renderCloudMagnets() {
   elements.cloudTorrentsList.innerHTML = filtered
     .map((m) => {
       const isReady = m.statusCode === 4 || m.status === 'Ready';
-      const isDownloading = m.statusCode === 1 || m.status === 'Downloading';
       const progress = isReady ? 100 : (m.size > 0 && typeof m.downloaded === 'number') ? Math.round((m.downloaded / m.size) * 100) : 0;
       const encodedName = encodeURIComponent(m.filename || '');
       const isSelected = state.cloudSelection.has(m.id);
+      const statusLabel = isReady ? 'Ready' : `${m.status || 'Active'} (${progress}%)`;
+      const seedWord = m.seeders === 1 ? 'seed' : 'seeds';
 
       return `
         <div class="cloud-card ${isSelected ? 'selected' : ''}">
           <label class="cloud-select-box">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleCloudSelect(${m.id})" />
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleCloudSelect(${m.id})" aria-label="Select torrent" />
           </label>
           <div class="cloud-info">
-            <div class="cloud-title mono" title="${m.filename || 'Torrent ' + m.id}">${m.filename || 'Torrent #' + m.id}</div>
+            <div class="cloud-title" title="${m.filename || 'Torrent ' + m.id}">${m.filename || 'Torrent ' + m.id}</div>
             <div class="cloud-meta">
               <span>${formatBytes(m.size)}</span>
-              <span>•</span>
-              <span style="color:var(--accent-electric);">${m.status || 'Active'} (${progress}%)</span>
-              ${m.seeders !== undefined ? `<span>• ${m.seeders} SEEDS</span>` : ''}
-              ${m.downloadSpeed > 0 ? `<span>• ${formatSpeed(m.downloadSpeed)}</span>` : ''}
+              <span>${statusLabel}</span>
+              ${m.seeders !== undefined ? `<span>${m.seeders} ${seedWord}</span>` : ''}
+              ${m.downloadSpeed > 0 ? `<span>${formatSpeed(m.downloadSpeed)}</span>` : ''}
             </div>
           </div>
           <div class="cloud-actions">
             <button class="btn btn-primary btn-sm" onclick="downloadCloudMagnet(${m.id}, decodeURIComponent('${encodedName}'))">
               <span class="btn-svg">${ICONS.drive}</span>
-              <span>DOWNLOAD TO DISK</span>
+              <span>Download</span>
             </button>
-            <button class="btn btn-danger btn-sm btn-icon" onclick="deleteCloudMagnet(${m.id})" title="Delete from cloud">
+            <button class="btn btn-danger btn-sm btn-icon" onclick="deleteCloudMagnet(${m.id})" title="Delete from cloud" aria-label="Delete from cloud">
               ${ICONS.trash}
             </button>
           </div>
@@ -1020,7 +1024,7 @@ window.openFileTreeModal = async function (taskId) {
   state.currentTreeTaskId = taskId;
   elements.fileTreeModal.classList.add('active');
   elements.treeContentArea.innerHTML = `
-    <div class="shimmer-card">
+    <div class="shimmer-block">
       <div class="shimmer-line header"></div>
       <div class="shimmer-line sub"></div>
     </div>
@@ -1036,9 +1040,7 @@ window.openFileTreeModal = async function (taskId) {
 
     if (!task.files || task.files.length === 0) {
       elements.treeContentArea.innerHTML = `
-        <div class="empty-state" style="padding:20px;">
-          <p>Querying directory topology from AllDebrid...</p>
-        </div>
+        <div class="list-empty">Loading the file list…</div>
       `;
       return;
     }
@@ -1056,8 +1058,8 @@ window.openFileTreeModal = async function (taskId) {
             </div>
             <div class="tree-row-right">
               <span>${formatBytes(f.size)}</span>
-              <span class="status-pill ${f.status}" style="font-size:10px;padding:2px 8px;">
-                ${isDone ? 'COMPLETE' : isError ? 'ERROR' : f.progress + '%'}
+              <span class="status-pill ${f.status}">
+                ${isDone ? 'Complete' : isError ? 'Error' : `${f.progress}%`}
               </span>
             </div>
           </div>
@@ -1065,7 +1067,7 @@ window.openFileTreeModal = async function (taskId) {
       })
       .join('');
   } catch (err) {
-    elements.treeContentArea.innerHTML = `<p style="color:var(--accent-primary);">${err.message}</p>`;
+    elements.treeContentArea.innerHTML = `<p class="list-error">${err.message}</p>`;
   }
 };
 
@@ -1088,7 +1090,9 @@ elements.openLocalFolderFromTreeBtn.onclick = () => {
 
 function switchTab(tabId) {
   document.querySelectorAll('.nav-tab').forEach((tab) => {
-    tab.classList.toggle('active', tab.dataset.tab === tabId);
+    const isActive = tab.dataset.tab === tabId;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-selected', String(isActive));
   });
 
   document.querySelectorAll('.tab-content').forEach((pane) => {
@@ -1155,7 +1159,7 @@ elements.cancelFolderBrowserBtn.onclick = closeFolderBrowser;
 
 async function loadDirectory(targetPath = '') {
   elements.browserFoldersList.innerHTML = `
-    <div class="shimmer-card" style="padding:12px;">
+    <div class="shimmer-block" style="padding:12px;">
       <div class="shimmer-line" style="width:70%;"></div>
       <div class="shimmer-line" style="width:50%;"></div>
     </div>
@@ -1196,9 +1200,7 @@ async function loadDirectory(targetPath = '') {
     // Render Folders List
     if (!data.directories || data.directories.length === 0) {
       elements.browserFoldersList.innerHTML = `
-        <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;" class="mono">
-          NO SUBDIRECTORIES
-        </div>
+        <div class="list-empty">No subfolders</div>
       `;
     } else {
       elements.browserFoldersList.innerHTML = data.directories
@@ -1214,9 +1216,7 @@ async function loadDirectory(targetPath = '') {
     }
   } catch (err) {
     elements.browserFoldersList.innerHTML = `
-      <div style="padding:16px;color:var(--accent-primary);font-size:13px;" class="mono">
-        DIRECTORY ERROR: ${err.message}
-      </div>
+      <div class="list-error">Could not read this folder: ${err.message}</div>
     `;
   }
 }
@@ -1294,10 +1294,10 @@ function openDownloadReview(previews) {
   elements.reviewTotalSize.textContent = formatBytes(primaryItem.totalSize);
 
   const fileCount = primaryItem.flattenedFiles?.length || 1;
-  elements.reviewFileCount.textContent = `${fileCount} FILES`;
+  elements.reviewFileCount.textContent = `${fileCount} ${fileCount === 1 ? 'file' : 'files'}`;
 
-  elements.reviewStatusBadge.textContent = primaryItem.isReady ? 'CLOUD READY' : 'WAITING FOR CLOUD';
-  elements.reviewStatusBadge.style.color = primaryItem.isReady ? 'var(--accent-success)' : 'var(--accent-amber)';
+  elements.reviewStatusBadge.textContent = primaryItem.isReady ? 'Ready' : 'Waiting for cloud';
+  elements.reviewStatusBadge.className = `telemetry-badge ${primaryItem.isReady ? 'badge-success' : 'badge-warning'}`;
 
   elements.reviewOutputDirInput.value = primaryItem.defaultOutputDir;
 
@@ -1306,7 +1306,7 @@ function openDownloadReview(previews) {
   if (diskWarning) {
     if (primaryItem.fitsOnDisk === false) {
       const freeStr = primaryItem.freeSpaceBytes != null ? formatBytes(primaryItem.freeSpaceBytes) : 'unknown';
-      diskWarning.innerHTML = `⚠ LOW DISK SPACE — task needs <strong>${formatBytes(primaryItem.totalSize)}</strong> but only <strong>${freeStr}</strong> is free at the destination volume. Consider another drive.`;
+      diskWarning.innerHTML = `Low disk space. This task needs <strong>${formatBytes(primaryItem.totalSize)}</strong> but only <strong>${freeStr}</strong> is free at the destination. Consider another drive.`;
       diskWarning.style.display = 'block';
     } else {
       diskWarning.style.display = 'none';
@@ -1376,9 +1376,7 @@ function renderReviewTree() {
 
   if (files.length === 0) {
     elements.reviewTreeContainer.innerHTML = `
-      <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;" class="mono">
-        Single stream or cloud cache pending. Directory topology will create automatically upon ingestion.
-      </div>
+      <div class="list-empty">The file list is still being prepared. It appears here when the cloud copy is ready.</div>
     `;
     return;
   }
@@ -1390,9 +1388,9 @@ function renderReviewTree() {
       
       let diskBadge = '';
       if (f.isCompleteOnDisk) {
-        diskBadge = '<span class="status-pill completed" style="font-size:9px;padding:2px 6px;">[ ON DISK - SKIP ]</span>';
+        diskBadge = '<span class="status-pill completed">On disk</span>';
       } else if (f.existsOnDisk && f.diskBytes > 0) {
-        diskBadge = `<span class="status-pill downloading" style="font-size:9px;padding:2px 6px;">[ RESUME: ${formatBytes(f.diskBytes)} ]</span>`;
+        diskBadge = `<span class="status-pill downloading">Resume from ${formatBytes(f.diskBytes)}</span>`;
       }
 
       return `
@@ -1460,7 +1458,7 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
   const deleteArchiveAfterExtract = autoExtract && !!elements.reviewDeletePartsCheckbox?.checked;
 
   elements.confirmReviewDownloadBtn.disabled = true;
-  elements.confirmReviewDownloadBtn.textContent = 'DISPATCHING PIPELINE...';
+  elements.confirmReviewDownloadBtn.textContent = 'Starting…';
 
   const itemsPayload = state.reviewPreviews.map((p) => ({
     planId: p.planId || undefined,
@@ -1489,7 +1487,7 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
       throw new Error(data.errors.join('; '));
     }
 
-    showToast(`Dispatched ${data.addedCount} task(s) into pipeline!`, 'success');
+    showToast(`Added ${data.addedCount} download${data.addedCount === 1 ? '' : 's'}`, 'success');
     closeDownloadReview();
     closeAddModal();
     switchTab('active');
@@ -1498,10 +1496,10 @@ elements.confirmReviewDownloadBtn.onclick = async () => {
   } finally {
     elements.confirmReviewDownloadBtn.disabled = false;
     elements.confirmReviewDownloadBtn.innerHTML = `
-      <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polygon points="5 3 19 12 5 21 5 3"/>
       </svg>
-      <span>CONFIRM &amp; DISPATCH TASK</span>
+      <span>Start download</span>
     `;
   }
 };
@@ -1519,7 +1517,7 @@ elements.submitAddBtn.onclick = async () => {
   }
 
   elements.submitAddBtn.disabled = true;
-  elements.submitAddBtn.textContent = 'ANALYZING TOPOLOGY...';
+  elements.submitAddBtn.textContent = 'Reading files…';
 
   try {
     const res = await apiFetch('/api/downloads/preview', {
@@ -1540,7 +1538,7 @@ elements.submitAddBtn.onclick = async () => {
     showToast(err.message, 'error');
   } finally {
     elements.submitAddBtn.disabled = false;
-    elements.submitAddBtn.textContent = 'INSPECT & REVIEW STRUCTURE';
+    elements.submitAddBtn.textContent = 'Review files';
   }
 };
 
@@ -1603,7 +1601,7 @@ elements.submitUploadBtn.onclick = async () => {
   });
 
   elements.submitUploadBtn.disabled = true;
-  elements.submitUploadBtn.textContent = 'INSPECTING TORRENT...';
+  elements.submitUploadBtn.textContent = 'Reading torrent…';
 
   try {
     const res = await apiFetch('/api/downloads/preview', {
@@ -1623,7 +1621,7 @@ elements.submitUploadBtn.onclick = async () => {
     showToast(err.message, 'error');
   } finally {
     elements.submitUploadBtn.disabled = false;
-    elements.submitUploadBtn.textContent = 'INSPECT & DOWNLOAD';
+    elements.submitUploadBtn.textContent = 'Review files';
   }
 };
 
@@ -1632,7 +1630,7 @@ elements.submitUploadBtn.onclick = async () => {
 // ============================================================
 
 elements.maxConcurrentRange.oninput = () => {
-  elements.maxConcurrentVal.textContent = `${elements.maxConcurrentRange.value} WORKERS`;
+  elements.maxConcurrentVal.textContent = `${elements.maxConcurrentRange.value} workers`;
 };
 
 elements.toggleApiKeyVisibility.onclick = () => {
@@ -1676,9 +1674,9 @@ elements.settingsForm.onsubmit = async (e) => {
     if (newToken) {
       storeToken(newToken);
       if (elements.authTokenInput) elements.authTokenInput.value = '';
-      showToast('Access token saved. Keep it safe — required for all API access.', 'success');
+      showToast('Access token saved. Keep it safe, it is required for all API access.', 'success');
     } else {
-      showToast('Configuration persisted successfully!', 'success');
+      showToast('Settings saved', 'success');
     }
     fetchStatus();
   } catch (err) {
@@ -1702,7 +1700,7 @@ if (elements.scheduleEnabledCheckbox) {
 
 elements.testApiBtn.onclick = async () => {
   elements.testApiBtn.disabled = true;
-  elements.testApiBtn.textContent = 'VERIFYING...';
+  elements.testApiBtn.textContent = 'Checking…';
 
   try {
     // If user entered a key in input, save it first
@@ -1718,16 +1716,17 @@ elements.testApiBtn.onclick = async () => {
     const data = await res.json();
 
     if (data.userInfo) {
-      showToast(`Credentials Valid: Node active as ${data.userInfo.username} (Premium: ${data.userInfo.isPremium ? 'YES' : 'EXPIRED'})`, 'success');
+      const tier = data.userInfo.isPremium ? 'premium' : 'expired';
+      showToast(`Connected as ${data.userInfo.username} (${tier} account)`, 'success');
     } else {
-      showToast(`Verification Failed: ${data.userError || 'Invalid API Key'}`, 'error');
+      showToast(`Could not verify credentials: ${data.userError || 'invalid API key'}`, 'error');
     }
     fetchStatus();
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
     elements.testApiBtn.disabled = false;
-    elements.testApiBtn.textContent = 'VERIFY CREDENTIALS';
+    elements.testApiBtn.textContent = 'Test connection';
   }
 };
 
@@ -1740,12 +1739,12 @@ async function performSearch() {
   if (!query) {
     elements.searchResultsContainer.innerHTML = `
       <div class="empty-state">
-        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <svg class="empty-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        <div class="empty-title">RELEASE AGGREGATOR READY</div>
-        <div class="empty-desc">Enter any movie, TV series, anime, game, or software to search across indexers with real-time AllDebrid cloud cache detection.</div>
+        <div class="empty-title">Search releases</div>
+        <div class="empty-desc">Enter a title to search the indexers and check AllDebrid cache availability before downloading.</div>
       </div>
     `;
     elements.searchMetaBar.style.display = 'none';
@@ -1758,7 +1757,7 @@ async function performSearch() {
   elements.searchResultsContainer.innerHTML = '';
   elements.searchMetaBar.style.display = 'none';
   elements.triggerSearchBtn.disabled = true;
-  elements.triggerSearchBtn.textContent = 'SEARCHING...';
+  elements.triggerSearchBtn.textContent = 'Searching…';
 
   const category = state.searchCategory || 'all';
   const onlyCached = elements.onlyCachedCheckbox?.checked || false;
@@ -1779,15 +1778,15 @@ async function performSearch() {
 
     if (data.instantCount > 0) {
       elements.searchInstantBadge.style.display = 'inline-flex';
-      elements.searchInstantBadge.textContent = `⚡ ${data.instantCount}`;
+      elements.searchInstantBadge.textContent = `${data.instantCount} cached`;
     } else {
       elements.searchInstantBadge.style.display = 'none';
     }
   } catch (err) {
     elements.searchResultsContainer.innerHTML = `
       <div class="empty-state">
-        <div style="color:var(--accent-primary);font-weight:700;margin-bottom:6px;">SEARCH QUERY FAILED</div>
-        <p style="color:var(--text-muted);font-size:12px;">${err.message}</p>
+        <div class="empty-title text-danger">Search failed</div>
+        <div class="empty-desc">${err.message}</div>
       </div>
     `;
   } finally {
@@ -1795,11 +1794,11 @@ async function performSearch() {
     elements.searchSkeleton.style.display = 'none';
     elements.triggerSearchBtn.disabled = false;
     elements.triggerSearchBtn.innerHTML = `
-      <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8" />
         <line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
-      <span>SEARCH</span>
+      <span>Search</span>
     `;
   }
 }
@@ -1808,8 +1807,8 @@ function renderSearchResults(results) {
   if (!results || results.length === 0) {
     elements.searchResultsContainer.innerHTML = `
       <div class="empty-state">
-        <div class="empty-title">NO RELEASES MATCHING QUERY</div>
-        <div class="empty-desc">Try modifying your search terms or unchecking the "Only Instant Cached" filter.</div>
+        <div class="empty-title">No releases found</div>
+        <div class="empty-desc">Try a different title, or turn off the cached-only filter.</div>
       </div>
     `;
     return;
@@ -1823,8 +1822,11 @@ function renderSearchResults(results) {
       const encodedTitle = encodeURIComponent(r.title || '');
 
       const posterImg = r.poster
-        ? `<img class="search-card-thumb" src="${r.poster}" alt="Poster" onerror="this.style.display='none'" />`
+        ? `<img class="search-card-thumb" src="${r.poster}" alt="" loading="lazy" onerror="this.style.display='none'" />`
         : `<div class="search-card-icon">${ICONS.video}</div>`;
+
+      const seedWord = r.seeders === 1 ? 'seed' : 'seeds';
+      const peerWord = r.leechers === 1 ? 'peer' : 'peers';
 
       return `
         <div class="search-result-card ${isInstant ? 'is-instant' : ''}">
@@ -1833,12 +1835,12 @@ function renderSearchResults(results) {
             <div class="search-card-info">
               <div class="search-card-title" title="${r.title}">${r.title}</div>
               <div class="search-card-meta">
-                ${isInstant ? `<span class="badge-instant-cached">⚡ INSTANT CLOUD READY</span>` : `<span class="badge-p2p-needed">⏳ SEEDING REQUIRED</span>`}
+                ${isInstant ? `<span class="badge-instant-cached">Cached</span>` : `<span class="badge-p2p-needed">Seeding required</span>`}
                 <span class="category-tag">${r.category || 'General'}</span>
                 <span class="indexer-badge">${r.indexer || 'Torrent'}</span>
                 <span class="telemetry-badge">${sizeStr}</span>
-                <span class="telemetry-badge" style="color:var(--accent-success);border-color:rgba(0,255,102,0.3)">🟢 ${r.seeders || 0} SEEDS</span>
-                <span class="telemetry-badge" style="color:var(--text-muted);">🔴 ${r.leechers || 0} PEERS</span>
+                <span class="telemetry-badge">${r.seeders || 0} ${seedWord}</span>
+                <span class="telemetry-badge">${r.leechers || 0} ${peerWord}</span>
                 ${r.year ? `<span class="telemetry-badge">${r.year}</span>` : ''}
               </div>
             </div>
@@ -1846,20 +1848,20 @@ function renderSearchResults(results) {
 
           <div class="search-card-actions">
             <button class="btn btn-primary btn-sm" onclick="dispatchSearchDownload(decodeURIComponent('${encodedMagnet}'), decodeURIComponent('${encodedTitle}'))" title="Download directly to disk">
-              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              <span>DOWNLOAD</span>
+              <span>Download</span>
             </button>
 
-            <button class="btn btn-secondary btn-sm" onclick="saveSearchToCloud(decodeURIComponent('${encodedMagnet}'), decodeURIComponent('${encodedTitle}'))" title="Save to AllDebrid Cloud">
+            <button class="btn btn-secondary btn-sm" onclick="saveSearchToCloud(decodeURIComponent('${encodedMagnet}'), decodeURIComponent('${encodedTitle}'))" title="Save to AllDebrid cloud">
               <span class="btn-svg">${ICONS.cloud}</span>
-              <span>CLOUD</span>
+              <span>Cloud</span>
             </button>
 
-            <button class="btn btn-secondary btn-sm btn-icon" onclick="copyMagnetLink(decodeURIComponent('${encodedMagnet}'))" title="Copy Magnet URI">
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="copyMagnetLink(decodeURIComponent('${encodedMagnet}'))" title="Copy magnet link" aria-label="Copy magnet link">
               <span class="btn-svg">${ICONS.link}</span>
             </button>
           </div>
@@ -1985,7 +1987,7 @@ if (elements.runBatchCacheCheckBtn) {
     }
 
     elements.runBatchCacheCheckBtn.disabled = true;
-    elements.runBatchCacheCheckBtn.textContent = 'QUERYING CLOUD CACHE...';
+    elements.runBatchCacheCheckBtn.textContent = 'Checking…';
 
     try {
       const res = await apiFetch('/api/magnet/check-cache', {
@@ -1998,17 +2000,17 @@ if (elements.runBatchCacheCheckBtn) {
       if (data.error) throw new Error(data.error);
 
       const list = data.results || [];
-      elements.batchCacheSummaryText.innerHTML = `Found <strong style="color:var(--text-primary);">${list.length}</strong> items • <strong style="color:var(--accent-success);">${data.instantCount || 0}</strong> 100% Instant Ready`;
+      elements.batchCacheSummaryText.innerHTML = `Found <strong class="text-strong">${list.length}</strong> items, <strong class="text-success">${data.instantCount || 0}</strong> ready instantly.`;
 
       if (list.length === 0) {
-        elements.batchCacheTbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:18px;">No valid magnets detected.</td></tr>`;
+        elements.batchCacheTbody.innerHTML = `<tr><td colspan="4" class="cell-empty">No valid magnets found.</td></tr>`;
       } else {
         elements.batchCacheTbody.innerHTML = list
           .map((item) => {
             const isReady = item.ready === true;
             const statusBadge = isReady
-              ? `<span class="badge-instant-cached">⚡ 100% CACHED</span>`
-              : `<span class="badge-p2p-needed">⏳ SEEDING</span>`;
+              ? `<span class="badge-instant-cached">Cached</span>`
+              : `<span class="badge-p2p-needed">Seeding</span>`;
             const sizeText = item.size ? formatBytes(item.size) : 'Unknown';
             const nameText = item.name || item.hash || item.magnet || 'Unknown';
             const encodedMag = encodeURIComponent(item.magnet || item.hash || '');
@@ -2017,11 +2019,11 @@ if (elements.runBatchCacheCheckBtn) {
             return `
               <tr>
                 <td>${statusBadge}</td>
-                <td class="mono" style="font-size:12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${nameText}">${nameText}</td>
-                <td class="mono" style="font-size:12px;">${sizeText}</td>
-                <td style="text-align:right;">
+                <td class="mono cell-name" title="${nameText}">${nameText}</td>
+                <td class="mono">${sizeText}</td>
+                <td class="cell-action">
                   <button class="btn btn-primary btn-sm" onclick="dispatchSearchDownload(decodeURIComponent('${encodedMag}'), decodeURIComponent('${encodedName}')); closeBatchCacheModal();">
-                    <span>DOWNLOAD</span>
+                    <span>Download</span>
                   </button>
                 </td>
               </tr>
@@ -2036,10 +2038,10 @@ if (elements.runBatchCacheCheckBtn) {
     } finally {
       elements.runBatchCacheCheckBtn.disabled = false;
       elements.runBatchCacheCheckBtn.innerHTML = `
-        <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
         </svg>
-        <span>INSPECT CLOUD AVAILABILITY</span>
+        <span>Check availability</span>
       `;
     }
   };

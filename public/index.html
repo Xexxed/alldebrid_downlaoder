@@ -3,97 +3,86 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AllDebrid Downloader — High Performance Torrent & Cloud Engine</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="description" content="A desktop download manager for AllDebrid links, magnets and cloud torrents." />
+  <title>AllDebrid Downloader</title>
   <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2300BFFF'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%234f8cff'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>">
 </head>
-<body class="hpc-theme">
-  <!-- Top Circuit Accent Line -->
-  <div class="hpc-top-accent"></div>
-
+<body>
   <div class="app-container">
-    <!-- HPC Header -->
     <header class="app-header">
       <div class="logo-area">
         <div class="logo-icon-container">
-          <svg class="hpc-icon-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="hpc-icon-logo" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
           </svg>
         </div>
         <div class="logo-text">
-          <h1>ALLDEBRID <span class="accent-text">CORE</span></h1>
-          <span class="system-spec">HPC DOWNLOAD ENGINE • v4.2</span>
+          <h1>AllDebrid Downloader</h1>
+          <span class="system-spec">Download manager</span>
         </div>
       </div>
 
       <div class="header-telemetry">
-        <!-- Global Speed Counter -->
         <div class="telemetry-pill speed-pill">
-          <svg class="telemetry-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="telemetry-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
           </svg>
           <div class="telemetry-data">
-            <span class="telemetry-label">THROUGHPUT</span>
-            <span class="telemetry-val mono" id="globalSpeed">0.00 MB/s</span>
+            <span class="telemetry-label">Speed</span>
+            <span class="telemetry-val" id="globalSpeed">0.00 MB/s</span>
           </div>
         </div>
 
-        <!-- Downloaded Today Counter -->
         <div class="telemetry-pill">
-          <svg class="telemetry-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="telemetry-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
           <div class="telemetry-data">
-            <span class="telemetry-label">TODAY</span>
-            <span class="telemetry-val mono" id="todayDownloaded">0.00 B</span>
+            <span class="telemetry-label">Today</span>
+            <span class="telemetry-val" id="todayDownloaded">0.00 B</span>
           </div>
         </div>
 
-        <!-- User / Node Status -->
         <div class="telemetry-pill node-pill" id="userPill">
-          <svg class="telemetry-icon" id="userStatusIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="telemetry-icon" id="userStatusIcon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
             <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
             <line x1="6" y1="6" x2="6.01" y2="6" />
             <line x1="6" y1="18" x2="6.01" y2="18" />
           </svg>
           <div class="telemetry-data">
-            <span class="telemetry-label" id="userStatusLabel">NODE ACCOUNT</span>
-            <span class="telemetry-val" id="userStatusValue">Connecting...</span>
+            <span class="telemetry-label" id="userStatusLabel">Account</span>
+            <span class="telemetry-val" id="userStatusValue">Connecting…</span>
           </div>
         </div>
 
-        <!-- Add Download Action -->
         <button class="btn btn-primary" id="openAddModalBtn">
-          <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          <span>NEW TASK</span>
+          <span>Add download</span>
         </button>
       </div>
     </header>
 
-    <!-- Navigation Control Bar -->
-    <nav class="main-nav">
-      <div class="nav-tabs">
-        <button class="nav-tab active" data-tab="active">
-          <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <nav class="main-nav" aria-label="Primary">
+      <div class="nav-tabs" role="tablist">
+        <button class="nav-tab active" data-tab="active" role="tab" aria-selected="true">
+          <svg class="tab-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          <span>Active Pipeline</span>
+          <span>Active</span>
           <span class="tab-badge" id="activeCount">0</span>
         </button>
 
-        <button class="nav-tab" data-tab="completed">
-          <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="nav-tab" data-tab="completed" role="tab" aria-selected="false">
+          <svg class="tab-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
             <polyline points="22 4 12 14.01 9 11.01" />
           </svg>
@@ -101,143 +90,134 @@
           <span class="tab-badge" id="completedCount">0</span>
         </button>
 
-        <button class="nav-tab" data-tab="cloud">
-          <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="nav-tab" data-tab="cloud" role="tab" aria-selected="false">
+          <svg class="tab-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
           </svg>
-          <span>Cloud Storage</span>
+          <span>Cloud</span>
           <span class="tab-badge" id="cloudCount">0</span>
         </button>
 
-        <button class="nav-tab" data-tab="search">
-          <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="nav-tab" data-tab="search" role="tab" aria-selected="false">
+          <svg class="tab-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <span>Discover &amp; Search</span>
-          <span class="tab-badge" id="searchInstantBadge" style="display:none;background:rgba(0,255,102,0.15);color:var(--accent-success);border-color:rgba(0,255,102,0.4)">⚡ 0</span>
+          <span>Discover</span>
+          <span class="tab-badge" id="searchInstantBadge" style="display:none">0 cached</span>
         </button>
 
-        <button class="nav-tab" data-tab="settings">
-          <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="nav-tab" data-tab="settings" role="tab" aria-selected="false">
+          <svg class="tab-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
-          <span>Engine Config</span>
+          <span>Settings</span>
         </button>
       </div>
 
       <div class="nav-telemetry">
-        <div class="socket-indicator" id="wsStatus">
-          <span class="pulse-dot"></span>
-          <span class="socket-text mono">SOCKET LIVE</span>
+        <div class="socket-indicator" id="wsStatus" role="status">
+          <span class="socket-text">Connecting…</span>
         </div>
       </div>
     </nav>
 
-    <!-- Main Viewport -->
     <main class="content-area">
-      <!-- Active Tasks Tab -->
       <section class="tab-content active" id="tab-active">
         <div class="hpc-toolbar">
           <div class="search-wrapper">
-            <svg class="search-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="search-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <input type="text" id="activeSearchInput" class="hpc-input" placeholder="Filter active pipeline tasks..." />
+            <input type="text" id="activeSearchInput" class="hpc-input" placeholder="Filter active downloads" aria-label="Filter active downloads" />
           </div>
-          <div class="toolbar-metadata mono" id="activeStatsText">
-            0 TASKS IN PIPELINE
-          </div>
+          <div class="toolbar-metadata" id="activeStatsText">0 active downloads</div>
         </div>
 
         <div class="tasks-container" id="activeTasksList">
-          <!-- Empty State -->
           <div class="empty-state" id="emptyActiveState">
             <div class="empty-icon-box">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
             </div>
-            <h3>PIPELINE IDLE</h3>
-            <p>No active download jobs in progress. Paste a magnet, getMagnet link, or upload a .torrent file to initiate the high-speed transfer pipeline.</p>
+            <h2>No active downloads</h2>
+            <p>Add a magnet link, a getMagnet URL or a torrent file to start a transfer.</p>
             <button class="btn btn-secondary" onclick="document.getElementById('openAddModalBtn').click()">
-              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              <span>DISPATCH DOWNLOAD TASK</span>
+              <span>Add download</span>
             </button>
           </div>
         </div>
       </section>
 
-      <!-- Completed Tasks Tab -->
       <section class="tab-content" id="tab-completed">
         <div class="hpc-toolbar">
           <div class="search-wrapper">
-            <svg class="search-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="search-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <input type="text" id="completedSearchInput" class="hpc-input" placeholder="Search completed downloads..." />
+            <input type="text" id="completedSearchInput" class="hpc-input" placeholder="Filter completed downloads" aria-label="Filter completed downloads" />
           </div>
-          <div class="toolbar-metadata mono" id="completedStatsText">
-            0 COMPLETED JOBS
-          </div>
+          <div class="toolbar-metadata" id="completedStatsText">0 completed</div>
         </div>
 
         <div class="tasks-container" id="completedTasksList">
           <div class="empty-state" id="emptyCompletedState">
             <div class="empty-icon-box">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                 <polyline points="22 4 12 14.01 9 11.01" />
               </svg>
             </div>
-            <h3>NO COMPLETED LOGS</h3>
-            <p>Finished downloads with verified on-disk directory trees will be archived here.</p>
+            <h2>Nothing completed yet</h2>
+            <p>Finished transfers appear here with their folder structure and extraction status.</p>
           </div>
         </div>
       </section>
 
-      <!-- Cloud Torrents Tab -->
       <section class="tab-content" id="tab-cloud">
         <div class="hpc-toolbar">
           <div class="search-wrapper">
-            <svg class="search-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="search-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <input type="text" id="cloudSearchInput" class="hpc-input" placeholder="Query AllDebrid cloud cache..." />
+            <input type="text" id="cloudSearchInput" class="hpc-input" placeholder="Filter cloud torrents" aria-label="Filter cloud torrents" />
           </div>
           <div class="toolbar-actions cloud-toolbar-controls">
-            <label class="cloud-select-all mono">
+            <label class="cloud-select-all">
               <input type="checkbox" id="cloudSelectAllCheckbox" />
-              <span>SELECT ALL</span>
+              <span>Select all</span>
             </label>
-            <select id="cloudSortSelect" class="hpc-input cloud-sort-select">
-              <option value="default">SORT: DEFAULT</option>
-              <option value="name">SORT: NAME</option>
-              <option value="size">SORT: SIZE</option>
-              <option value="age">SORT: NEWEST</option>
+            <select id="cloudSortSelect" class="hpc-input cloud-sort-select" aria-label="Sort cloud torrents">
+              <option value="default">Default order</option>
+              <option value="name">Name</option>
+              <option value="size">Size</option>
+              <option value="age">Newest</option>
             </select>
             <button class="btn btn-danger btn-sm" id="cloudBulkDeleteBtn" style="display:none;">
-              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
               </svg>
-              <span>DELETE SELECTED</span>
+              <span>Delete selected</span>
             </button>
             <button class="btn btn-secondary btn-sm" id="refreshCloudBtn">
-              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="23 4 23 10 17 10" />
                 <polyline points="1 20 1 14 7 14" />
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
               </svg>
-              <span>SYNC CLOUD</span>
+              <span>Sync cloud</span>
             </button>
           </div>
         </div>
@@ -246,11 +226,11 @@
           <div class="cloud-usage-track">
             <div class="cloud-usage-fill" id="cloudUsageBar"></div>
           </div>
-          <div class="cloud-usage-text mono" id="cloudUsageText">0 MAGNETS • 0.00 B IN CLOUD</div>
+          <div class="cloud-usage-text" id="cloudUsageText">0 magnets, 0 B in cloud</div>
         </div>
 
         <div class="cloud-torrents-container" id="cloudTorrentsList">
-          <div class="shimmer-card">
+          <div class="shimmer-block">
             <div class="shimmer-line header"></div>
             <div class="shimmer-line sub"></div>
             <div class="shimmer-line bar"></div>
@@ -258,76 +238,71 @@
         </div>
       </section>
 
-      <!-- Discover & Search Tab -->
       <section class="tab-content" id="tab-search">
         <div class="hpc-toolbar search-toolbar-main">
           <div class="search-input-wrap">
-            <svg class="search-box-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="search-box-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <input type="text" id="torrentSearchInput" class="hpc-input mono search-primary-input" placeholder="Search releases across YTS, EZTV, Nyaa, PirateBay... (e.g. Inception, Ubuntu, Jujutsu)" />
+            <input type="text" id="torrentSearchInput" class="hpc-input search-primary-input" placeholder="Search movies, shows, anime and games" aria-label="Search releases" />
             <button class="btn btn-primary" id="triggerSearchBtn">
-              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
-              <span>SEARCH</span>
+              <span>Search</span>
             </button>
           </div>
 
           <div class="search-actions-bar">
-            <button class="btn btn-secondary" id="openBatchCacheModalBtn" title="Inspect multiple magnet links or hashes at once">
-              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="btn btn-secondary" id="openBatchCacheModalBtn" title="Check several magnets or hashes at once">
+              <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
               </svg>
-              <span>BATCH CACHE CHECKER</span>
+              <span>Batch cache check</span>
             </button>
           </div>
         </div>
 
-        <!-- Filter bar: Category pills & Only Cached Toggle -->
         <div class="search-filter-strip">
           <div class="category-pills" id="searchCategoryPills">
-            <button class="cat-pill active" data-cat="all">ALL CATEGORIES</button>
-            <button class="cat-pill" data-cat="movies">🎬 MOVIES</button>
-            <button class="cat-pill" data-cat="tv">📺 TV SHOWS</button>
-            <button class="cat-pill" data-cat="anime">🌸 ANIME</button>
-            <button class="cat-pill" data-cat="games">🎮 GAMES &amp; APPS</button>
+            <button class="cat-pill active" data-cat="all">All</button>
+            <button class="cat-pill" data-cat="movies">Movies</button>
+            <button class="cat-pill" data-cat="tv">TV</button>
+            <button class="cat-pill" data-cat="anime">Anime</button>
+            <button class="cat-pill" data-cat="games">Games</button>
           </div>
 
           <label class="instant-cache-filter-toggle">
             <input type="checkbox" id="onlyCachedCheckbox" />
             <span class="toggle-track"></span>
-            <span class="toggle-label mono">ONLY INSTANT CACHED ⚡</span>
+            <span class="toggle-label">Cached only</span>
           </label>
         </div>
 
-        <!-- Search Status / Summary -->
         <div class="search-meta-bar" id="searchMetaBar" style="display:none;">
           <div class="search-stat-item">
-            <span class="meta-label">RESULTS FOUND:</span>
+            <span class="meta-label">Results</span>
             <span class="meta-val highlight" id="searchResultTotal">0</span>
           </div>
           <div class="search-stat-item">
-            <span class="meta-label">INSTANT CLOUD READY:</span>
+            <span class="meta-label">Cached</span>
             <span class="meta-val instant-green" id="searchResultInstant">0</span>
           </div>
         </div>
 
-        <!-- Results Grid -->
         <div class="search-results-grid" id="searchResultsContainer">
           <div class="empty-state">
-            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg class="empty-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <div class="empty-title">RELEASE AGGREGATOR READY</div>
-            <div class="empty-desc">Enter any movie, TV series, anime, game, or software to search across indexers with real-time AllDebrid cloud cache detection.</div>
+            <div class="empty-title">Search releases</div>
+            <div class="empty-desc">Enter a title to search the indexers and check AllDebrid cache availability before downloading.</div>
           </div>
         </div>
 
-        <!-- Search Loading Skeleton -->
         <div class="search-skeleton-grid" id="searchSkeleton" style="display:none;">
           <div class="skeleton-card"><div class="shimmer-line"></div><div class="shimmer-line bar"></div></div>
           <div class="skeleton-card"><div class="shimmer-line"></div><div class="shimmer-line bar"></div></div>
@@ -335,167 +310,158 @@
         </div>
       </section>
 
-      <!-- Settings Tab -->
       <section class="tab-content" id="tab-settings">
         <div class="hpc-card settings-card">
           <div class="card-header">
             <div class="card-title-group">
-              <svg class="card-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg class="card-header-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
               <div>
-                <h2>SYSTEM CONFIGURATION</h2>
-                <p class="card-subtitle">Manage API credentials, storage paths, and download worker limits</p>
+                <h2>Settings</h2>
+                <p class="card-subtitle">API credentials, storage, transfer limits and access protection.</p>
               </div>
             </div>
           </div>
 
           <form id="settingsForm" class="settings-form">
-            <!-- API Key -->
             <div class="form-group">
               <label for="apiKeyInput" class="hpc-label">
-                <span>ALLDEBRID API CREDENTIAL</span>
-                <a href="https://alldebrid.com/apikeys" target="_blank" class="hpc-link">GENERATE API KEY ↗</a>
+                <span>AllDebrid API key</span>
+                <a href="https://alldebrid.com/apikeys" target="_blank" rel="noreferrer" class="hpc-link">Get a key</a>
               </label>
               <div class="input-with-button">
-                <input type="password" id="apiKeyInput" class="hpc-input mono" placeholder="Paste your AllDebrid API key..." autocomplete="off" />
-                <button type="button" class="btn btn-secondary btn-icon" id="toggleApiKeyVisibility" title="Toggle visibility">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <input type="password" id="apiKeyInput" class="hpc-input mono" placeholder="Paste your AllDebrid API key" autocomplete="off" />
+                <button type="button" class="btn btn-secondary btn-icon" id="toggleApiKeyVisibility" title="Show or hide the API key" aria-label="Show or hide the API key">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <circle cx="12" cy="12" r="3" />
                   </svg>
                 </button>
               </div>
-              <span class="field-help mono">Persisted safely to local server environment (.env).</span>
+              <span class="field-help">Stored locally in the server environment file.</span>
             </div>
 
-            <!-- Download Directory -->
             <div class="form-group">
               <label for="downloadDirInput" class="hpc-label">
-                <span>LOCAL ROOT DOWNLOAD DESTINATION</span>
+                <span>Download folder</span>
               </label>
               <div class="input-with-button">
-                <input type="text" id="downloadDirInput" class="hpc-input mono" placeholder="e.g. F:\Torrents or D:\Downloads" />
+                <input type="text" id="downloadDirInput" class="hpc-input mono" placeholder="For example D:\Downloads" />
                 <button type="button" class="btn btn-secondary" id="browseDownloadDirBtn">
-                  <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                   </svg>
-                  <span>BROWSE PATH</span>
+                  <span>Browse</span>
                 </button>
               </div>
-              <span class="field-help mono">All torrent folder/subfolder hierarchies are strictly preserved inside this root path.</span>
+              <span class="field-help">Torrent folders and subfolders are preserved inside this root.</span>
             </div>
 
-            <!-- Concurrency Limit -->
             <div class="form-group">
               <label for="maxConcurrentRange" class="hpc-label">
-                <span>CONCURRENT FILE STREAM WORKERS</span>
-                <span class="range-indicator mono" id="maxConcurrentVal">3 WORKERS</span>
+                <span>Concurrent downloads</span>
+                <span class="range-indicator" id="maxConcurrentVal">3 workers</span>
               </label>
               <div class="range-slider-box">
                 <input type="range" id="maxConcurrentRange" min="1" max="10" value="3" class="hpc-range" />
               </div>
-              <span class="field-help mono">Recommendation: Set to 1-2 for mechanical USB HDDs to maximize sequential throughput; 3-5 for SSDs.</span>
+              <span class="field-help">Use 1 or 2 for mechanical drives, 3 to 5 for SSDs.</span>
             </div>
 
-            <!-- Optional Jackett / Prowlarr Integration -->
             <div class="form-group">
               <label for="jackettUrlInput" class="hpc-label">
-                <span>JACKETT / PROWLARR SERVER URL (OPTIONAL)</span>
+                <span>Jackett or Prowlarr URL</span>
               </label>
-              <input type="text" id="jackettUrlInput" class="hpc-input mono" placeholder="e.g. http://localhost:9117" />
-              <span class="field-help mono">Query your personal private &amp; configured trackers through your local Jackett/Prowlarr instance.</span>
+              <input type="text" id="jackettUrlInput" class="hpc-input mono" placeholder="For example http://localhost:9117" />
+              <span class="field-help">Optional. Adds your private trackers to Discover.</span>
             </div>
 
             <div class="form-group">
               <label for="jackettApiKeyInput" class="hpc-label">
-                <span>JACKETT / PROWLARR API KEY</span>
+                <span>Jackett or Prowlarr API key</span>
               </label>
-              <input type="password" id="jackettApiKeyInput" class="hpc-input mono" placeholder="Paste Jackett API key..." />
+              <input type="password" id="jackettApiKeyInput" class="hpc-input mono" placeholder="Paste the API key" />
             </div>
 
-            <!-- Bandwidth & Reliability -->
             <div class="form-group">
               <label for="speedLimitInput" class="hpc-label">
-                <span>GLOBAL SPEED LIMIT (KB/S)</span>
+                <span>Speed limit (KB/s)</span>
               </label>
-              <input type="number" id="speedLimitInput" class="hpc-input mono" min="0" step="100" placeholder="0 = unlimited" />
-              <span class="field-help mono">Shared bandwidth ceiling across all concurrent file streams.</span>
+              <input type="number" id="speedLimitInput" class="hpc-input mono" min="0" step="100" placeholder="0 for unlimited" />
+              <span class="field-help">Shared ceiling across all active transfers.</span>
             </div>
 
             <div class="settings-grid-2col">
               <div class="form-group">
                 <label for="maxRetriesInput" class="hpc-label">
-                  <span>AUTO-RETRY ATTEMPTS</span>
+                  <span>Auto-retry attempts</span>
                 </label>
                 <input type="number" id="maxRetriesInput" class="hpc-input mono" min="0" max="10" value="3" />
-                <span class="field-help mono">Backoff: 30s → 2m → 10m before a file is marked failed.</span>
+                <span class="field-help">Backoff runs from 30 seconds to 10 minutes.</span>
               </div>
               <div class="form-group">
                 <label for="minFreeGbInput" class="hpc-label">
-                  <span>MIN FREE DISK (GB)</span>
+                  <span>Minimum free disk (GB)</span>
                 </label>
                 <input type="number" id="minFreeGbInput" class="hpc-input mono" min="0" step="1" value="5" />
-                <span class="field-help mono">All downloads auto-pause below this free-space threshold (0 = off).</span>
+                <span class="field-help">Downloads pause below this threshold. 0 turns the guard off.</span>
               </div>
             </div>
 
-            <!-- Bandwidth Schedule -->
             <div class="form-group">
               <label class="hpc-checkbox-inline">
                 <input type="checkbox" id="scheduleEnabledCheckbox" />
-                <span>ENABLE OFF-PEAK BANDWIDTH SCHEDULE</span>
+                <span>Use an off-peak speed schedule</span>
               </label>
               <div class="schedule-fields">
                 <div>
-                  <label class="hpc-label"><span>Daily Start</span></label>
+                  <label class="hpc-label" for="scheduleStartInput"><span>Start</span></label>
                   <input type="time" id="scheduleStartInput" class="hpc-input mono" value="23:00" />
                 </div>
                 <div>
-                  <label class="hpc-label"><span>Daily End</span></label>
+                  <label class="hpc-label" for="scheduleEndInput"><span>End</span></label>
                   <input type="time" id="scheduleEndInput" class="hpc-input mono" value="07:00" />
                 </div>
                 <div>
-                  <label class="hpc-label"><span>Limit KB/s (0=unlimited)</span></label>
+                  <label class="hpc-label" for="scheduleLimitInput"><span>Limit (KB/s)</span></label>
                   <input type="number" id="scheduleLimitInput" class="hpc-input mono" min="0" step="100" placeholder="0" />
                 </div>
               </div>
-              <span class="field-help mono">During this daily window the global speed limit is overridden by the schedule limit.</span>
+              <span class="field-help">During this daily window the schedule limit replaces the global speed limit.</span>
             </div>
 
-            <!-- Access Protection -->
             <div class="form-group">
               <label for="authTokenInput" class="hpc-label">
-                <span>ACCESS TOKEN (AUTH PROTECTION)</span>
-                <span class="range-indicator mono" id="authTokenMasked">NOT SET</span>
+                <span>Access token</span>
+                <span class="range-indicator" id="authTokenMasked">Not set</span>
               </label>
-              <input type="password" id="authTokenInput" class="hpc-input mono" placeholder="Set an access token..." autocomplete="off" />
-              <span class="field-help mono">When set, every API/WebSocket call requires this token. Leave blank to keep the current token.</span>
+              <input type="password" id="authTokenInput" class="hpc-input mono" placeholder="Set an access token" autocomplete="off" />
+              <span class="field-help">When set, the API and WebSocket require this token. Leave blank to keep the current one.</span>
             </div>
 
-            <!-- Lifetime Statistics -->
             <div class="form-group">
-              <div class="hpc-label"><span>LIFETIME TRANSFER STATISTICS</span></div>
+              <div class="hpc-label"><span>Lifetime transfer statistics</span></div>
               <div class="stats-strip">
                 <div class="stat-box">
-                  <span class="stat-val mono" id="statsLifetimeBytes">0.00 B</span>
-                  <span class="stat-label mono">ALL-TIME DOWNLOADED</span>
+                  <span class="stat-val" id="statsLifetimeBytes">0.00 B</span>
+                  <span class="stat-label">Downloaded</span>
                 </div>
                 <div class="stat-box">
-                  <span class="stat-val mono" id="statsPeakSpeed">0.00 B/s</span>
-                  <span class="stat-label mono">PEAK THROUGHPUT</span>
+                  <span class="stat-val" id="statsPeakSpeed">0.00 B/s</span>
+                  <span class="stat-label">Peak speed</span>
                 </div>
                 <div class="stat-box">
-                  <span class="stat-val mono" id="statsActiveTime">--</span>
-                  <span class="stat-label mono">ACTIVE TIME</span>
+                  <span class="stat-val" id="statsActiveTime">--</span>
+                  <span class="stat-label">Active time</span>
                 </div>
               </div>
             </div>
 
             <div class="settings-actions">
-              <button type="submit" class="btn btn-primary">SAVE CONFIGURATION</button>
-              <button type="button" class="btn btn-secondary" id="testApiBtn">VERIFY CREDENTIALS</button>
+              <button type="submit" class="btn btn-primary">Save changes</button>
+              <button type="button" class="btn btn-secondary" id="testApiBtn">Test connection</button>
             </div>
           </form>
         </div>
@@ -503,16 +469,14 @@
     </main>
   </div>
 
-  <!-- Modal: Add Download Task -->
   <div class="modal-backdrop" id="addDownloadModal">
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title-group">
-          <div class="modal-tag mono">INGESTION PIPELINE</div>
-          <h3>DISPATCH NEW DOWNLOAD</h3>
+          <h3>Add download</h3>
         </div>
-        <button class="btn-close" id="closeAddModalBtn" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="btn-close" id="closeAddModalBtn" title="Close" aria-label="Close">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -521,73 +485,69 @@
 
       <div class="modal-tab-header">
         <button class="modal-tab active" data-modal-tab="text">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
           </svg>
-          <span>MAGNET / GETMAGNET URLS</span>
+          <span>Links</span>
         </button>
         <button class="modal-tab" data-modal-tab="file">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
-          <span>UPLOAD .TORRENT</span>
+          <span>Torrent file</span>
         </button>
       </div>
 
       <div class="modal-body">
-        <!-- Text Pane -->
         <div class="modal-pane active" id="modal-tab-text">
           <div class="form-group">
-            <label class="hpc-label"><span>SUPPORTED PROTOCOL FORMATS:</span></label>
+            <label class="hpc-label"><span>Accepted formats</span></label>
             <div class="protocol-tags mono">
               <span class="p-tag">getMagnet/&lt;id&gt;</span>
-              <span class="p-tag">magnet:?xt=urn:btih:...</span>
-              <span class="p-tag">40-Char InfoHash</span>
-              <span class="p-tag">Hoster Direct URLs</span>
+              <span class="p-tag">magnet:?xt=urn:btih:…</span>
+              <span class="p-tag">40-character hash</span>
+              <span class="p-tag">Hoster link</span>
             </div>
-            <textarea id="downloadInputText" class="hpc-textarea mono" rows="5" placeholder="https://alldebrid.com/getMagnet/685554127&#10;magnet:?xt=urn:btih:842783e3005495d5d1637f5364b59343c7844707&#10;https://hoster.com/file/xyz"></textarea>
+            <textarea id="downloadInputText" class="hpc-textarea" rows="5" placeholder="https://alldebrid.com/getMagnet/685554127&#10;magnet:?xt=urn:btih:842783e3005495d5d1637f5364b59343c7844707&#10;https://hoster.com/file/xyz" aria-label="Download links"></textarea>
           </div>
           <div class="modal-footer-actions">
-            <button class="btn btn-secondary" id="cancelAddBtn">CANCEL</button>
-            <button class="btn btn-primary" id="submitAddBtn">INSPECT &amp; REVIEW STRUCTURE</button>
+            <button class="btn btn-secondary" id="cancelAddBtn">Cancel</button>
+            <button class="btn btn-primary" id="submitAddBtn">Review files</button>
           </div>
         </div>
 
-        <!-- File Upload Pane -->
         <div class="modal-pane" id="modal-tab-file">
           <div class="hpc-dropzone" id="torrentDropzone">
-            <svg class="dropzone-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg class="dropzone-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <h4>DROP .TORRENT FILES</h4>
-            <p class="mono">CLICK OR DRAG METADATA FILES TO INGEST</p>
+            <h4>Drop torrent files here</h4>
+            <p>or click to choose them</p>
             <input type="file" id="torrentFileInput" accept=".torrent" multiple style="display: none;" />
           </div>
           <div class="selected-files-list" id="selectedFilesList"></div>
           <div class="modal-footer-actions">
-            <button class="btn btn-secondary" id="cancelUploadBtn">CANCEL</button>
-            <button class="btn btn-primary" id="submitUploadBtn" disabled>INSPECT &amp; DOWNLOAD</button>
+            <button class="btn btn-secondary" id="cancelUploadBtn">Cancel</button>
+            <button class="btn btn-primary" id="submitUploadBtn" disabled>Review files</button>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Download Review & Structure Verification -->
   <div class="modal-backdrop" id="downloadReviewModal">
     <div class="modal-card modal-lg">
       <div class="modal-header">
         <div class="modal-title-group">
-          <div class="modal-tag mono">VERIFICATION GATE</div>
-          <h3>STRUCTURE INSPECTOR &amp; TARGET SELECTION</h3>
+          <h3>Review files</h3>
         </div>
-        <button class="btn-close" id="closeReviewModalBtn" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="btn-close" id="closeReviewModalBtn" title="Close" aria-label="Close">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -595,52 +555,51 @@
       </div>
 
       <div class="modal-body">
-        <div class="hpc-review-card">
+        <div class="review-panel">
           <div class="review-top-bar">
-            <div class="review-name mono" id="reviewTorrentName">Torrent_Payload_Identifier</div>
+            <div class="review-name" id="reviewTorrentName">Torrent name</div>
             <div class="review-meta-pills">
               <span class="telemetry-badge" id="reviewTotalSize">0.00 GB</span>
-              <span class="telemetry-badge" id="reviewFileCount">0 FILES</span>
-              <span class="telemetry-badge status-ready" id="reviewStatusBadge">CLOUD READY</span>
+              <span class="telemetry-badge" id="reviewFileCount">0 files</span>
+              <span class="telemetry-badge" id="reviewStatusBadge">Ready</span>
             </div>
           </div>
 
           <div class="review-destination-wrapper">
             <div class="disk-warning-banner" id="reviewDiskWarning" style="display:none;"></div>
-            <label class="hpc-label"><span>DISK DESTINATION FOLDER</span></label>
+            <label class="hpc-label" for="reviewOutputDirInput"><span>Destination folder</span></label>
             <div class="input-with-button">
               <input type="text" id="reviewOutputDirInput" class="hpc-input mono" />
               <button type="button" class="btn btn-secondary btn-sm" id="changeReviewDirBtn">
-                <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
-                <span>CHANGE PATH</span>
+                <span>Change</span>
               </button>
             </div>
-            <span class="field-help mono">Preserves all subdirectories below directly into this directory without repeating root folders.</span>
+            <span class="field-help">Subfolders are kept inside this directory without repeating root folders.</span>
           </div>
 
-          <!-- Archive Auto-Extraction & Cleanup Options -->
-          <div class="review-options-card" id="archiveOptionsCard">
-            <div class="hpc-label"><span>ARCHIVE &amp; PART FILE AUTOMATION</span></div>
+          <div class="review-options" id="archiveOptionsCard">
+            <div class="hpc-label"><span>Archive automation</span></div>
             <div class="extraction-options-grid">
-              <label class="hpc-checkbox-card" id="autoExtractCard">
+              <label class="check-option" id="autoExtractCard">
                 <input type="checkbox" id="reviewAutoExtractCheckbox" />
                 <div class="chk-content">
                   <div class="chk-title-row">
-                    <span class="chk-title mono">AUTO-EXTRACT ARCHIVE(S)</span>
+                    <span class="chk-title">Extract archives automatically</span>
                   </div>
-                  <div class="chk-desc mono">After download completes, archives are extracted safely into the destination. Existing files are never overwritten.</div>
+                  <div class="chk-desc">When the download completes, archives are extracted into the destination. Existing files are never overwritten.</div>
                 </div>
               </label>
 
-              <label class="hpc-checkbox-card" id="deletePartsCard">
+              <label class="check-option" id="deletePartsCard">
                 <input type="checkbox" id="reviewDeletePartsCheckbox" disabled />
                 <div class="chk-content">
                   <div class="chk-title-row">
-                    <span class="chk-title mono">DELETE PART FILES AFTER EXTRACTION</span>
+                    <span class="chk-title">Delete part files after extraction</span>
                   </div>
-                  <div class="chk-desc mono">Remove verified archive parts after successful extraction. Requires auto-extract.</div>
+                  <div class="chk-desc">Remove verified archive parts after a successful extraction. Requires automatic extraction.</div>
                 </div>
               </label>
             </div>
@@ -649,41 +608,37 @@
 
         <div class="review-tree-header">
           <div class="hpc-label">
-            <span>FOLDER &amp; FILE BREAKDOWN (<span id="reviewSelectedCount" class="accent-text">0</span> SELECTED)</span>
+            <span>Files (<span id="reviewSelectedCount" class="accent-text">0</span> selected)</span>
           </div>
-          <div class="tree-batch-actions mono">
-            <button type="button" class="btn-text-action" id="selectAllReviewFilesBtn">[ SELECT ALL ]</button>
-            <button type="button" class="btn-text-action" id="deselectAllReviewFilesBtn">[ DESELECT ALL ]</button>
+          <div class="tree-batch-actions">
+            <button type="button" class="btn-text-action" id="selectAllReviewFilesBtn">Select all</button>
+            <button type="button" class="btn-text-action" id="deselectAllReviewFilesBtn">Clear</button>
           </div>
         </div>
 
-        <div class="hpc-tree-box" id="reviewTreeContainer">
-          <!-- Populated dynamically -->
-        </div>
+        <div class="hpc-tree-box" id="reviewTreeContainer"></div>
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="cancelReviewBtn">BACK</button>
+        <button class="btn btn-secondary" id="cancelReviewBtn">Back</button>
         <button class="btn btn-primary" id="confirmReviewDownloadBtn">
-          <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
-          <span>CONFIRM &amp; DISPATCH TASK</span>
+          <span>Start download</span>
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Interactive Folder Browser -->
   <div class="modal-backdrop" id="folderBrowserModal">
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title-group">
-          <div class="modal-tag mono">FILESYSTEM BROWSER</div>
-          <h3>SELECT DIRECTORY</h3>
+          <h3>Choose a folder</h3>
         </div>
-        <button class="btn-close" id="closeFolderBrowserBtn" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="btn-close" id="closeFolderBrowserBtn" title="Close" aria-label="Close">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -691,13 +646,11 @@
       </div>
 
       <div class="modal-body">
-        <div class="browser-drives-bar" id="browserDrivesBar">
-          <!-- Drive selector buttons -->
-        </div>
+        <div class="browser-drives-bar" id="browserDrivesBar"></div>
 
         <div class="browser-path-navigation">
-          <button type="button" class="btn btn-secondary btn-icon" id="browserUpDirBtn" title="Go up one level">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button type="button" class="btn btn-secondary btn-icon" id="browserUpDirBtn" title="Go up one level" aria-label="Go up one level">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="19" x2="12" y2="5" />
               <polyline points="5 12 12 5 19 12" />
             </svg>
@@ -705,33 +658,29 @@
           <div class="browser-current-path mono" id="browserCurrentPathText">C:\</div>
         </div>
 
-        <div class="browser-folders-list" id="browserFoldersList">
-          <!-- Folders -->
-        </div>
+        <div class="browser-folders-list" id="browserFoldersList"></div>
 
         <div class="browser-create-row">
-          <input type="text" id="newFolderNameInput" class="hpc-input mono" placeholder="New folder name..." />
-          <button type="button" class="btn btn-secondary btn-sm" id="createFolderBtn">+ CREATE FOLDER</button>
+          <input type="text" id="newFolderNameInput" class="hpc-input" placeholder="New folder name" aria-label="New folder name" />
+          <button type="button" class="btn btn-secondary btn-sm" id="createFolderBtn">Create folder</button>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="cancelFolderBrowserBtn">CANCEL</button>
-        <button class="btn btn-primary" id="selectFolderConfirmBtn">SELECT DIRECTORY</button>
+        <button class="btn btn-secondary" id="cancelFolderBrowserBtn">Cancel</button>
+        <button class="btn btn-primary" id="selectFolderConfirmBtn">Choose folder</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: File Tree Hierarchy Inspector -->
   <div class="modal-backdrop" id="fileTreeModal">
     <div class="modal-card modal-lg">
       <div class="modal-header">
         <div class="modal-title-group">
-          <div class="modal-tag mono">ON-DISK TOPOLOGY</div>
-          <h3 id="treeModalTitle">TORRENT DIRECTORY STRUCTURE</h3>
+          <h3 id="treeModalTitle">Files</h3>
         </div>
-        <button class="btn-close" id="closeTreeModalBtn" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="btn-close" id="closeTreeModalBtn" title="Close" aria-label="Close">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -739,34 +688,32 @@
       </div>
       <div class="modal-body">
         <div class="hpc-tree-box" id="treeContentArea">
-          <div class="shimmer-card">
+          <div class="shimmer-block">
             <div class="shimmer-line"></div>
             <div class="shimmer-line"></div>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="closeTreeModalBottomBtn">CLOSE</button>
+        <button class="btn btn-secondary" id="closeTreeModalBottomBtn">Close</button>
         <button class="btn btn-primary" id="openLocalFolderFromTreeBtn">
-          <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
-          <span>OPEN IN FILE EXPLORER</span>
+          <span>Open folder</span>
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Batch Magnet Cache Checker -->
   <div class="modal-backdrop" id="batchCacheModal">
     <div class="modal-card modal-lg">
       <div class="modal-header">
         <div class="modal-title-group">
-          <div class="modal-tag mono">CACHE PRE-FLIGHT</div>
-          <h3>BATCH MAGNET CACHE INSPECTOR</h3>
+          <h3>Batch cache check</h3>
         </div>
-        <button class="btn-close" id="closeBatchCacheModalBtn" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="btn-close" id="closeBatchCacheModalBtn" title="Close" aria-label="Close">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -775,30 +722,29 @@
 
       <div class="modal-body">
         <label class="hpc-label" for="batchCacheTextarea">
-          <span>PASTE MAGNET URIS OR 40-CHAR INFOHASHES (ONE PER LINE)</span>
+          <span>Magnet URIs or hashes (one per line)</span>
         </label>
-        <textarea id="batchCacheTextarea" class="hpc-textarea mono" rows="5" placeholder="magnet:?xt=urn:btih:...&#10;842783e3005495d5d1637f5364b59343c7844707&#10;..."></textarea>
+        <textarea id="batchCacheTextarea" class="hpc-textarea" rows="5" placeholder="magnet:?xt=urn:btih:…&#10;842783e3005495d5d1637f5364b59343c7844707"></textarea>
 
-        <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center;">
-          <div class="field-help mono" id="batchCacheSummaryText">Paste up to 50 links/hashes to inspect cloud availability in real-time.</div>
+        <div class="toolbar-actions" style="justify-content: space-between;">
+          <div class="field-help" id="batchCacheSummaryText">Paste up to 50 links or hashes to check cloud availability.</div>
           <button class="btn btn-primary" id="runBatchCacheCheckBtn">
-            <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="btn-svg" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
             </svg>
-            <span>INSPECT CLOUD AVAILABILITY</span>
+            <span>Check availability</span>
           </button>
         </div>
 
-        <div id="batchCacheResultsContainer" style="margin-top: 20px; display: none;">
-          <div class="modal-tag mono" style="margin-bottom: 8px;">INSPECTION TELEMETRY</div>
+        <div id="batchCacheResultsContainer" style="display: none;">
           <div class="batch-cache-table-wrap">
             <table class="batch-cache-table" id="batchCacheTable">
               <thead>
                 <tr>
-                  <th style="width:140px;">AVAILABILITY</th>
-                  <th>RELEASE NAME / HASH</th>
-                  <th style="width:100px;">SIZE</th>
-                  <th style="width:180px; text-align:right;">ACTION</th>
+                  <th style="width:140px;">Availability</th>
+                  <th>Release or hash</th>
+                  <th style="width:100px;">Size</th>
+                  <th style="width:180px; text-align:right;">Action</th>
                 </tr>
               </thead>
               <tbody id="batchCacheTbody"></tbody>
@@ -808,32 +754,29 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="closeBatchCacheModalBottomBtn">CLOSE</button>
+        <button class="btn btn-secondary" id="closeBatchCacheModalBottomBtn">Close</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Access Token Required -->
   <div class="modal-backdrop" id="tokenAuthModal">
     <div class="modal-card" style="max-width:440px;">
       <div class="modal-header">
         <div class="modal-title-group">
-          <div class="modal-tag mono">ACCESS CONTROL</div>
-          <h3>ENGINE LOCKED — TOKEN REQUIRED</h3>
+          <h3>Access token required</h3>
         </div>
       </div>
       <div class="modal-body">
-        <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">This server requires an access token. Enter it once — it will be stored locally in your browser.</p>
-        <input type="password" id="tokenAuthInput" class="hpc-input mono" placeholder="Paste access token..." autocomplete="off"
+        <p class="field-help">This server requires an access token. Enter it once and it is stored in this browser.</p>
+        <input type="password" id="tokenAuthInput" class="hpc-input mono" placeholder="Paste access token" autocomplete="off"
                onkeydown="if(event.key==='Enter'){event.preventDefault();submitAuthToken();}" />
       </div>
       <div class="modal-footer">
-        <button class="btn btn-primary" onclick="submitAuthToken()">UNLOCK ENGINE</button>
+        <button class="btn btn-primary" onclick="submitAuthToken()">Continue</button>
       </div>
     </div>
   </div>
 
-  <!-- Toast Notification Hub -->
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="app.js"></script>
